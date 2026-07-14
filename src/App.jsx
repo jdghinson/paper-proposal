@@ -5,6 +5,7 @@ import Toolbar from './components/Toolbar.jsx'
 import Canvas from './components/Canvas.jsx'
 import Panel from './components/Panel.jsx'
 import { GridSettingsOverlay, Menus } from './components/Overlays.jsx'
+import { Analytics } from '@vercel/analytics/react'
 
 function Shortcuts() {
   const app = useApp()
@@ -45,6 +46,7 @@ export default function App() {
         <Menus />
       </div>
       <Shortcuts />
+      <Analytics />
     </AppProvider>
   )
 }
