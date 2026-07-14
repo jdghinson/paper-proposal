@@ -45,6 +45,32 @@ const cardFlex = () => ({
 
 const makeEntry = (cols = 3, rows = 2) => ({ layout: 'none', grid: makeGrid(cols, rows), flex: makeFlex() })
 
+/* cells the items take up — a spanning item eats more than one */
+const usedCells = (entry) =>
+  (entry.members ?? []).reduce((n, mid) => {
+    const s = entry.spans?.[mid] ?? { col: 1, row: 1 }
+    return n + s.col * s.row
+  }, 0)
+
+/* If the items can't fit the explicit grid, CSS spills them into implicit rows —
+   so the row count is no longer the truth. Say so: switch rows to Auto. */
+const autoRowsIfOverflowing = (entry) => {
+  const g = entry.grid
+  if (g.rowMode !== 'fixed') return entry
+  if (usedCells(entry) <= g.cols.length * g.rows.length) return entry
+  return { ...entry, grid: { ...g, rowMode: 'auto' } }
+}
+
+/* Inverse: adding enough explicit rows so a Fixed row count can hold the items */
+const growRowsToFit = (entry) => {
+  const g = entry.grid
+  const need = Math.ceil(usedCells(entry) / g.cols.length)
+  if (g.rows.length >= need) return entry
+  const rows = g.rows.slice()
+  while (rows.length < need) rows.push(makeTrack())
+  return { ...entry, grid: { ...g, rows } }
+}
+
 export const CARD_IDS = ['exp-0', 'exp-1', 'exp-2', 'exp-3', 'exp-4']
 
 /* exp-0 starts as a plain frame (no layout) so selecting it alone demos the
@@ -150,7 +176,13 @@ export function AppProvider({ children }) {
       },
 
       updateGrid(id, patch) {
-        setLayouts((prev) => ({ ...prev, [id]: { ...prev[id], grid: { ...prev[id].grid, ...patch } } }))
+        setLayouts((prev) => {
+          let entry = { ...prev[id], grid: { ...prev[id].grid, ...patch } }
+          /* picking Fixed rows: give it enough rows to actually hold the items,
+             otherwise "Fixed N" would be a lie the moment anything overflows */
+          if (patch.rowMode === 'fixed') entry = growRowsToFit(entry)
+          return { ...prev, [id]: entry }
+        })
       },
 
       updateFlex(id, patch) {
@@ -164,7 +196,8 @@ export function AppProvider({ children }) {
           const key = axis === 'col' ? 'cols' : 'rows'
           const tracks = grid[key].slice(0, n)
           while (tracks.length < n) tracks.push(makeTrack())
-          return { ...prev, [id]: { ...prev[id], grid: { ...grid, [key]: tracks } } }
+          const entry = { ...prev[id], grid: { ...grid, [key]: tracks } }
+          return { ...prev, [id]: autoRowsIfOverflowing(entry) }
         })
       },
 
@@ -180,7 +213,8 @@ export function AppProvider({ children }) {
           const rowMax = grid.rowMode === 'fixed' ? grid.rows.length : 8
           next.row = Math.max(1, Math.min(rowMax, Math.round(next.row) || 1))
           if (next.col === cur.col && next.row === cur.row) return prev
-          return { ...prev, [wrapId]: { ...entry, spans: { ...(entry.spans ?? {}), [cardId]: next } } }
+          const nextEntry = { ...entry, spans: { ...(entry.spans ?? {}), [cardId]: next } }
+          return { ...prev, [wrapId]: autoRowsIfOverflowing(nextEntry) }
         })
       },
 
@@ -202,14 +236,19 @@ export const useApp = () => useContext(AppCtx)
 
 /* ---------- CSS derivation ---------- */
 
-export const trackToCSS = (t) => {
+/* An empty Fill row collapses to 0 in an auto-height container (there's no free
+   space for the fr to claim), which hides explicit empty rows. Giving rows a
+   floor keeps every row you asked for visible — and droppable, for bento. */
+export const MIN_ROW = 96
+
+export const trackToCSS = (t, axis = 'col') => {
   switch (t.mode) {
     case 'hug':
       return 'auto'
     case 'fixed':
       return `${t.px}px`
     default:
-      return `${t.fr}fr`
+      return axis === 'row' ? `minmax(${MIN_ROW}px, ${t.fr}fr)` : `${t.fr}fr`
   }
 }
 
@@ -237,10 +276,10 @@ export function layoutStyle(entry) {
       padding: `${grid.pad.t}px ${grid.pad.r}px ${grid.pad.b}px ${grid.pad.l}px`,
       overflow: grid.clip ? 'hidden' : 'visible',
     }
-    base.gridTemplateColumns = grid.cols.map(trackToCSS).join(' ')
+    base.gridTemplateColumns = grid.cols.map((t) => trackToCSS(t, 'col')).join(' ')
     // rows: Fixed = explicit track list; Auto = implicit rows that hug content
     if (grid.rowMode === 'fixed') {
-      base.gridTemplateRows = grid.rows.map(trackToCSS).join(' ')
+      base.gridTemplateRows = grid.rows.map((t) => trackToCSS(t, 'row')).join(' ')
     } else {
       base.gridAutoRows = 'auto'
     }
