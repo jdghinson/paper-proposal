@@ -124,10 +124,16 @@ export function AppProvider({ children }) {
           return
         }
         const members = CARD_IDS.filter((id) => cards.includes(id))
+        /* Default a grid to a near-square shape so both dimensions are visible
+           immediately (grid's whole point) — cols = ⌈√N⌉, rows = ⌈N/cols⌉:
+           3→2×2, 4→2×2, 5→3×2, 6→3×2. Flex wrap keeps the 3×2 config unused. */
+        const n = members.length
+        const cols = kind === 'grid' ? Math.ceil(Math.sqrt(n)) : 3
+        const rows = kind === 'grid' ? Math.ceil(n / cols) : 2
         setLayouts((prev) => ({
           ...prev,
           'wrap:experience': {
-            ...makeEntry(3, 2),
+            ...makeEntry(cols, rows),
             layout: kind,
             members,
             spans: Object.fromEntries(members.map((mid) => [mid, { col: 1, row: 1 }])),
