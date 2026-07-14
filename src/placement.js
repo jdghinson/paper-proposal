@@ -105,5 +105,15 @@ export function clampRect(entry, id, desired, dims) {
       if (growingBack) rect[axis] += 1 // hold the far edge, retreat the dragged one
     }
   }
-  return legal(rect) ? rect : (current ?? { ...desired, colSpan: 1, rowSpan: 1 })
+  if (legal(rect)) return rect
+  if (current) return current
+
+  /* no pinned rect to fall back to: clamp the start cell into the grid and
+     shrink to 1x1 — the minimal rect that is at least inside the grid */
+  return {
+    col: Math.min(Math.max(desired.col, 1), dims.cols),
+    row: Math.min(Math.max(desired.row, 1), dims.rows),
+    colSpan: 1,
+    rowSpan: 1,
+  }
 }
