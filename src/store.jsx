@@ -16,8 +16,9 @@ const makeGrid = (cols, rows) => ({
   rowMode: 'fixed', // 'fixed' (explicit count) | 'auto' (implicit rows that hug content)
   colGap: 8,
   rowGap: 8,
-  posMode: 'item', // 'item' | 'grid'
-  pos: { x: 'stretch', y: 'stretch' }, // items stretch by default
+  posMode: 'item', // which position tab is being edited: 'item' | 'grid'
+  itemPos: { x: 'stretch', y: 'stretch' }, // items stretch by default
+  gridPos: { x: 'start', y: 'start' }, // where tracks sit when there is free space
   pad: { t: 0, r: 0, b: 0, l: 0 },
   individualPad: false,
   clip: true,
@@ -231,13 +232,11 @@ export function layoutStyle(entry) {
     } else {
       base.gridAutoRows = 'auto'
     }
-    if (grid.posMode === 'item') {
-      base.justifyItems = grid.pos.x
-      base.alignItems = grid.pos.y
-    } else {
-      base.justifyContent = grid.pos.x
-      base.alignContent = grid.pos.y
-    }
+    /* both apply simultaneously — the posMode tab only picks which one the picker edits */
+    base.justifyItems = grid.itemPos.x
+    base.alignItems = grid.itemPos.y
+    base.justifyContent = grid.gridPos.x
+    base.alignContent = grid.gridPos.y
     return base
   }
   if (layout === 'flex') {

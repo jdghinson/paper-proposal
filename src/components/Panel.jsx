@@ -22,6 +22,7 @@ import {
   PadBottomIcon,
   PadToggleIcon,
   PadToggleActiveIcon,
+  StretchResetIcon,
   FlexArrow,
   EyeIcon,
   OpacityIcon,
@@ -262,19 +263,34 @@ function GridSection({ id }) {
           </div>
         </div>
         <div className="flex py-1 gap-2 h-16 flex-1 min-w-0">
-          <PositionPicker className="w-full h-fit" pos={grid.pos} onPick={(pos) => G({ pos })} />
+          <PositionPicker
+            className="w-full h-fit"
+            variant={grid.posMode}
+            pos={grid.posMode === 'item' ? grid.itemPos : grid.gridPos}
+            onPick={(pos) => G(grid.posMode === 'item' ? { itemPos: pos } : { gridPos: pos })}
+          />
         </div>
-        <IconBtn
-          className="-mx-1 mt-1"
-          active={app.menu?.kind === 'position'}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect()
-            app.setMenu(app.menu?.kind === 'position' ? null : { kind: 'position', id, x: r.right, y: r.bottom + 4 })
-          }}
-          title="Position options"
-        >
-          <SlidersIcon />
-        </IconBtn>
+        <div className="flex flex-col items-center gap-1.5 -mx-1 mt-1 shrink-0">
+          <IconBtn
+            active={app.menu?.kind === 'position'}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              app.setMenu(app.menu?.kind === 'position' ? null : { kind: 'position', id, x: r.right, y: r.bottom + 4 })
+            }}
+            title="Position options"
+          >
+            <SlidersIcon />
+          </IconBtn>
+          {grid.itemPos.x !== 'stretch' && (
+            <IconBtn
+              className="bg-[#3D3D3D] hover:bg-[#464646]"
+              onClick={() => G({ itemPos: { x: 'stretch', y: 'stretch' } })}
+              title="Reset item position to stretch"
+            >
+              <StretchResetIcon />
+            </IconBtn>
+          )}
+        </div>
       </div>
 
       {/* padding */}

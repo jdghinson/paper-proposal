@@ -125,32 +125,53 @@ export function Checkbox({ label, checked, onChange, kbd }) {
 }
 
 /* 3x3 position picker — exact structure from the design file.
-   pos: {x: 'start'|'center'|'end'|'stretch', y: same}; marker = 3 blue bars.
-   Stretch (the default) is drawn at the top-center cell, like the mockup;
-   clicking the active anchor again returns to stretch. */
-export function PositionPicker({ pos, onPick, className = '' }) {
+   pos: {x: 'start'|'center'|'end'|'stretch', y: same}.
+   variant 'item': marker = 3 blue bars; stretch (default) shows no marker,
+   just the dots. variant 'grid': marker = 2x2 blue squares. */
+const ItemMarker = () => (
+  <div className="flex flex-col items-center gap-0.5">
+    <div className="basis-0.5 h-0.5 shrink-0 w-1.75 rounded-[1px] bg-[#609EFA]" />
+    <div className="basis-0.5 h-0.5 shrink-0 w-2.5 rounded-[1px] bg-[#609EFA]" />
+    <div className="basis-0.5 h-0.5 shrink-0 w-1.75 rounded-[1px] bg-[#609EFA]" />
+  </div>
+)
+
+const GridMarker = () => (
+  <div className="flex flex-col items-start gap-px">
+    <div className="flex items-start gap-px">
+      <div className="rounded-[1px] shrink-0 bg-[#609EFA] size-1" />
+      <div className="rounded-[1px] shrink-0 bg-[#609EFA] size-1" />
+    </div>
+    <div className="flex items-start gap-px">
+      <div className="rounded-[1px] shrink-0 bg-[#609EFA] size-1" />
+      <div className="rounded-[1px] shrink-0 bg-[#609EFA] size-1" />
+    </div>
+  </div>
+)
+
+export function PositionPicker({ pos, onPick, variant = 'item', className = '' }) {
   const anchors = ['start', 'center', 'end']
   const isStretch = pos.x === 'stretch' || pos.y === 'stretch'
   return (
     <div className={`grid grid-cols-3 grid-rows-[19px_18px_19px] rounded-sm bg-[#373737] ${className}`}>
       {anchors.flatMap((y, r) =>
         anchors.map((x, c) => {
-          const active = isStretch ? r === 0 && c === 1 : pos.x === x && pos.y === y
+          const active = !isStretch && pos.x === x && pos.y === y
           const padCls = `${r === 0 ? 'pt-0.5 ' : r === 2 ? 'pb-0.5 ' : ''}${c === 0 ? 'pl-0.5' : c === 2 ? 'pr-0.5' : ''}`
           return (
             <div key={`${x}-${y}`} className={padCls}>
               <div
                 className="flex items-center justify-center rounded-xs size-full cursor-default hover:bg-[#FFFFFF0A]"
                 onClick={() =>
-                  active && !isStretch ? onPick({ x: 'stretch', y: 'stretch' }) : onPick({ x, y })
+                  active && variant === 'item' ? onPick({ x: 'stretch', y: 'stretch' }) : onPick({ x, y })
                 }
               >
                 {active ? (
-                  <div className="flex flex-col items-center gap-0.5">
-                    <div className="basis-0.5 h-0.5 shrink-0 w-1.75 rounded-[1px] bg-[#609EFA]" />
-                    <div className="basis-0.5 h-0.5 shrink-0 w-2.5 rounded-[1px] bg-[#609EFA]" />
-                    <div className="basis-0.5 h-0.5 shrink-0 w-1.75 rounded-[1px] bg-[#609EFA]" />
-                  </div>
+                  variant === 'grid' ? (
+                    <GridMarker />
+                  ) : (
+                    <ItemMarker />
+                  )
                 ) : (
                   <div className="rounded-full shrink-0 bg-[#FFFFFF80] size-0.5" />
                 )}

@@ -129,6 +129,16 @@ export const GridSettingsIcon = () => (
   </svg>
 )
 
+// Reset item position to stretch (four outward diagonal arrows, 16x16)
+export const StretchResetIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" style={{ flexShrink: 0 }}>
+    <path d="M2.981 3.618V5.981H1.981V1.981H5.981V2.981H3.618L6.5 5.863L5.863 6.5L2.981 3.618Z" fill={W(0.9)} />
+    <path d="M2.981 12.382V10.019H1.981V14.019H5.981V13.019H3.618L6.5 10.137L5.863 9.5L2.981 12.382Z" fill={W(0.9)} />
+    <path d="M13.019 3.618V5.981H14.019V1.981H10.019V2.981H12.382L9.5 5.863L10.137 6.5L13.019 3.618Z" fill={W(0.9)} />
+    <path d="M13.019 12.382V10.019H14.019V14.019H10.019V13.019H12.382L9.5 10.137L10.137 9.5L13.019 12.382Z" fill={W(0.9)} />
+  </svg>
+)
+
 // Position settings sliders (12x12)
 export const SlidersIcon = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" style={{ flexShrink: 0 }}>
