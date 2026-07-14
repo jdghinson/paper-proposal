@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState } from 'react'
+import { resolveDrop, clampRect, rectOf } from './placement.js'
 
 /* ------------------------------------------------------------------
    App state. Layouts are keyed by node id:
@@ -70,6 +71,19 @@ const growRowsToFit = (entry) => {
   while (rows.length < need) rows.push(makeTrack())
   return { ...entry, grid: { ...g, rows } }
 }
+
+export const WRAP_ID = 'wrap:experience'
+
+/* Auto rows are implicit — CSS makes as many as the content needs — so the row
+   ceiling for placement is the explicit count plus headroom for those. */
+export const AUTO_ROW_HEADROOM = 8
+
+export const gridDims = (entry) => ({
+  cols: entry.grid.cols.length,
+  rows: entry.grid.rowMode === 'fixed' ? entry.grid.rows.length : entry.grid.rows.length + AUTO_ROW_HEADROOM,
+})
+
+export const isPinned = (entry) => Boolean(entry?.places)
 
 export const CARD_IDS = ['exp-0', 'exp-1', 'exp-2', 'exp-3', 'exp-4']
 
@@ -201,6 +215,46 @@ export function AppProvider({ children }) {
         })
       },
 
+      /* First move pins every member where it currently sits, measured from the
+         DOM by the canvas. After that, placement is explicit and nothing
+         re-flows behind the user. Idempotent — a second call is ignored. */
+      pinPlaces(wrapId, places) {
+        setLayouts((prev) => {
+          const entry = prev[wrapId]
+          if (!entry || entry.places) return prev
+          return { ...prev, [wrapId]: { ...entry, places } }
+        })
+      },
+
+      moveItem(wrapId, cardId, target) {
+        setLayouts((prev) => {
+          const entry = prev[wrapId]
+          if (!entry?.places) return prev
+          const result = resolveDrop(entry, cardId, target, gridDims(entry))
+          if (!result.ok) return prev // refused: swap wouldn't fit, or 2+ occupants
+          return { ...prev, [wrapId]: autoRowsIfOverflowing({ ...entry, places: result.places }) }
+        })
+      },
+
+      /* an edge-drag resize: the rect the user is asking for, shrunk until legal */
+      resizeItem(wrapId, cardId, desired) {
+        setLayouts((prev) => {
+          const entry = prev[wrapId]
+          if (!entry?.places) return prev
+          const rect = clampRect(entry, cardId, desired, gridDims(entry))
+          if (!rect) return prev // not pinned, or its pinned rect is no longer legal
+          const cur = rectOf(entry, cardId)
+          if (cur && rect.col === cur.col && rect.row === cur.row && rect.colSpan === cur.colSpan && rect.rowSpan === cur.rowSpan)
+            return prev
+          const next = {
+            ...entry,
+            places: { ...entry.places, [cardId]: { col: rect.col, row: rect.row } },
+            spans: { ...entry.spans, [cardId]: { col: rect.colSpan, row: rect.rowSpan } },
+          }
+          return { ...prev, [wrapId]: autoRowsIfOverflowing(next) }
+        })
+      },
+
       /* how many columns/rows a grid item spans (edge-drag or panel edit) */
       updateSpan(wrapId, cardId, patch) {
         setLayouts((prev) => {
@@ -213,6 +267,26 @@ export function AppProvider({ children }) {
           const rowMax = grid.rowMode === 'fixed' ? grid.rows.length : 8
           next.row = Math.max(1, Math.min(rowMax, Math.round(next.row) || 1))
           if (next.col === cur.col && next.row === cur.row) return prev
+
+          /* pinned: a span can only grow into free cells */
+          if (entry.places) {
+            const place = entry.places[cardId]
+            if (!place) return prev // pinned grid, but this card was never pinned
+            const rect = clampRect(
+              entry,
+              cardId,
+              { col: place.col, row: place.row, colSpan: next.col, rowSpan: next.row },
+              gridDims(entry),
+            )
+            if (!rect) return prev // pinned rect is no longer legal under this grid
+            const pinnedEntry = {
+              ...entry,
+              places: { ...entry.places, [cardId]: { col: rect.col, row: rect.row } },
+              spans: { ...entry.spans, [cardId]: { col: rect.colSpan, row: rect.rowSpan } },
+            }
+            return { ...prev, [wrapId]: autoRowsIfOverflowing(pinnedEntry) }
+          }
+
           const nextEntry = { ...entry, spans: { ...(entry.spans ?? {}), [cardId]: next } }
           return { ...prev, [wrapId]: autoRowsIfOverflowing(nextEntry) }
         })

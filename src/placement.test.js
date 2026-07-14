@@ -187,3 +187,17 @@ describe('clampRect', () => {
     expect(r).toBeNull()
   })
 })
+
+import { gridDims } from './store.jsx'
+
+describe('gridDims', () => {
+  it('reads the explicit track counts', () => {
+    const e = { grid: { cols: [1, 1, 1], rows: [1, 1], rowMode: 'fixed' } }
+    expect(gridDims(e)).toEqual({ cols: 3, rows: 2 })
+  })
+
+  it('lets auto rows extend past the explicit ones', () => {
+    const e = { grid: { cols: [1, 1], rows: [1], rowMode: 'auto' } }
+    expect(gridDims(e).rows).toBeGreaterThan(1)
+  })
+})
