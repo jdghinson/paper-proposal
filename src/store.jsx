@@ -8,11 +8,12 @@ import { createContext, useContext, useMemo, useState } from 'react'
    - 'group:experience' — the original cards row
 ------------------------------------------------------------------- */
 
-export const makeTrack = () => ({ mode: 'fill', fr: 1, px: 120, min: 100 })
+export const makeTrack = () => ({ mode: 'fill', fr: 1, px: 120 })
 
 const makeGrid = (cols, rows) => ({
   cols: Array.from({ length: cols }, makeTrack),
   rows: Array.from({ length: rows }, makeTrack),
+  rowMode: 'fixed', // 'fixed' (explicit count) | 'auto' (implicit rows that hug content)
   colGap: 8,
   rowGap: 8,
   posMode: 'item', // 'item' | 'grid'
@@ -168,8 +169,6 @@ export const trackToCSS = (t) => {
       return 'auto'
     case 'fixed':
       return `${t.px}px`
-    case 'minmax':
-      return `minmax(${t.min}px, 1fr)`
     default:
       return `${t.fr}fr`
   }
@@ -178,11 +177,9 @@ export const trackToCSS = (t) => {
 export const trackLabel = (t) => {
   switch (t.mode) {
     case 'hug':
-      return { value: 'auto', mode: 'Hug' }
+      return { value: 'Auto', mode: 'Hug' }
     case 'fixed':
       return { value: `${t.px}`, mode: 'Fixed' }
-    case 'minmax':
-      return { value: `${t.min}–1fr`, mode: 'Minmax' }
     default:
       return { value: `${t.fr}fr`, mode: 'Fill' }
   }
@@ -196,12 +193,17 @@ export function layoutStyle(entry) {
   if (layout === 'grid') {
     const base = {
       display: 'grid',
-      gridTemplateColumns: grid.cols.map(trackToCSS).join(' '),
-      gridTemplateRows: grid.rows.map(trackToCSS).join(' '),
       columnGap: grid.colGap,
       rowGap: grid.rowGap,
       padding: `${grid.pad.t}px ${grid.pad.r}px ${grid.pad.b}px ${grid.pad.l}px`,
       overflow: grid.clip ? 'hidden' : 'visible',
+    }
+    base.gridTemplateColumns = grid.cols.map(trackToCSS).join(' ')
+    // rows: Fixed = explicit track list; Auto = implicit rows that hug content
+    if (grid.rowMode === 'fixed') {
+      base.gridTemplateRows = grid.rows.map(trackToCSS).join(' ')
+    } else {
+      base.gridAutoRows = 'auto'
     }
     if (grid.posMode === 'item') {
       base.justifyItems = grid.pos.x

@@ -175,7 +175,7 @@ function GridSection({ id }) {
         </IconBtn>
       </div>
 
-      {/* track counts + grid settings */}
+      {/* track counts + grid settings; the row chevron picks Fixed (count) vs Auto */}
       <Row>
         <Field
           icon={<ColumnsIcon />}
@@ -184,8 +184,12 @@ function GridSection({ id }) {
         />
         <Field
           icon={<ColumnsIcon rotate={90} />}
-          value={grid.rows.length}
-          onCommit={(v) => app.setTrackCount(id, 'row', num(v, grid.rows.length))}
+          value={grid.rowMode === 'auto' ? 'Auto' : grid.rows.length}
+          onCommit={grid.rowMode === 'fixed' ? (v) => app.setTrackCount(id, 'row', num(v, grid.rows.length)) : undefined}
+          onChevron={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            app.setMenu({ kind: 'countMode', id, axis: 'row', x: r.right, y: r.bottom + 4 })
+          }}
         />
         <IconBtn
           className="-m-1"

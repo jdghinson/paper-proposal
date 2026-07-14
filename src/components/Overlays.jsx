@@ -19,14 +19,12 @@ function TrackRow({ id, axis, index, track }) {
     if (draft !== null) {
       const n = Math.max(track.mode === 'fill' ? 0.1 : 1, num(draft, 1))
       if (track.mode === 'fill') app.updateTrack(id, axis, index, { fr: n })
-      else if (track.mode === 'fixed') app.updateTrack(id, axis, index, { px: n })
-      else app.updateTrack(id, axis, index, { min: n })
+      else app.updateTrack(id, axis, index, { px: n })
     }
     setDraft(null)
   }
 
-  const editValue =
-    track.mode === 'fill' ? String(track.fr) : track.mode === 'fixed' ? String(track.px) : String(track.min)
+  const editValue = track.mode === 'fill' ? String(track.fr) : String(track.px)
 
   return (
     <div className="flex items-center min-w-0 relative self-stretch">
@@ -35,7 +33,7 @@ function TrackRow({ id, axis, index, track }) {
           {editable ? (
             <input
               className="flex-1 min-w-0 font-sans text-[#FFFFFFE6] text-xs/4"
-              value={draft ?? (track.mode === 'fill' ? `${track.fr}fr` : track.mode === 'minmax' ? `${track.min}–1fr` : `${track.px}`)}
+              value={draft ?? (track.mode === 'fill' ? `${track.fr}fr` : `${track.px}`)}
               onFocus={(e) => {
                 setDraft(editValue)
                 requestAnimationFrame(() => e.target.select())
@@ -48,7 +46,7 @@ function TrackRow({ id, axis, index, track }) {
               }}
             />
           ) : (
-            <div className="flex-1 font-sans text-[#FFFFFFE6] text-xs/4 line-clamp-1">auto</div>
+            <div className="flex-1 font-sans text-[#FFFFFFE6] text-xs/4 line-clamp-1">Auto</div>
           )}
           <div className="text-right font-sans text-[#8E8E8E] text-xs/4 shrink-0">{label.mode}</div>
         </div>
@@ -69,6 +67,30 @@ function TrackRow({ id, axis, index, track }) {
   )
 }
 
+/* shown for an axis whose count mode is Auto — one non-indexed "Auto | Hug" row */
+function AutoAxisRow({ id, axis }) {
+  const app = useApp()
+  return (
+    <div className="flex items-center min-w-0 relative self-stretch">
+      <div className={`flex items-center h-6 w-full pr-5 pl-2.5 rounded-[5px] overflow-clip ${FIELD_SHADOW} bg-[#373737]`}>
+        <div className="flex items-center gap-1 w-full min-w-0">
+          <div className="flex-1 font-sans text-[#FFFFFFE6] text-xs/4 line-clamp-1">Auto</div>
+          <div className="text-right font-sans text-[#8E8E8E] text-xs/4 shrink-0">Hug</div>
+        </div>
+      </div>
+      <div
+        className="absolute right-0 h-6 w-5 flex items-center justify-center cursor-default"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          app.setMenu({ kind: 'countMode', id, axis, x: r.right, y: r.bottom + 4 })
+        }}
+      >
+        <ChevronDown />
+      </div>
+    </div>
+  )
+}
+
 export function GridSettingsOverlay() {
   const app = useApp()
   const id = app.activeLayoutId
@@ -77,7 +99,19 @@ export function GridSettingsOverlay() {
 
   /* live mini-preview: scale fixed px tracks down so proportions read */
   const previewTrack = (t) =>
-    t.mode === 'hug' ? 'minmax(12px, auto)' : t.mode === 'fixed' ? `${Math.max(8, t.px / 5)}px` : t.mode === 'minmax' ? `minmax(${Math.max(8, t.min / 5)}px, ${1}fr)` : `${t.fr}fr`
+    t.mode === 'hug' ? 'minmax(12px, auto)' : t.mode === 'fixed' ? `${Math.max(8, t.px / 5)}px` : `${t.fr}fr`
+
+  const previewStyle = {
+    display: 'grid',
+    gap: 2,
+    justifyItems: 'stretch',
+    alignItems: 'stretch',
+  }
+  const visCols = grid.cols.length
+  const visRows = grid.rowMode === 'fixed' ? grid.rows.length : 1
+  previewStyle.gridTemplateColumns = grid.cols.map(previewTrack).join(' ')
+  if (grid.rowMode === 'fixed') previewStyle.gridTemplateRows = grid.rows.map(previewTrack).join(' ')
+  else previewStyle.gridTemplateRows = `repeat(${visRows}, minmax(24px, auto))`
 
   return (
     <div className="fixed z-40 right-[293px] top-[108px] w-75 rounded-md overflow-clip [box-shadow:#555555_0px_0px_0px_0.5px,#00000066_0px_4px_20px_-2px] bg-[#2A2A2A]">
@@ -99,18 +133,8 @@ export function GridSettingsOverlay() {
 
       {/* live preview */}
       <div className="h-30 flex flex-col justify-center mt-2 rounded-sm overflow-clip bg-[#333333] mx-2 p-4">
-        <div
-          className="w-full h-full"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: grid.cols.map(previewTrack).join(' '),
-            gridTemplateRows: grid.rows.map(previewTrack).join(' '),
-            gap: 2,
-            justifyItems: 'stretch',
-            alignItems: 'stretch',
-          }}
-        >
-          {Array.from({ length: grid.cols.length * grid.rows.length }).map((_, i) => (
+        <div className="w-full h-full" style={previewStyle}>
+          {Array.from({ length: visCols * visRows }).map((_, i) => (
             <div key={i} className="rounded-xs bg-[#2B2B2B] min-h-3" />
           ))}
         </div>
@@ -125,10 +149,14 @@ export function GridSettingsOverlay() {
           ))}
         </div>
         <div className="flex items-start py-1 px-2 gap-2 flex-col h-fit flex-1 min-w-0">
-          <div className="font-sans text-[#FFFFFFA6] text-xs/4">{grid.rows.length > 1 ? 'Rows' : 'Row'}</div>
-          {grid.rows.map((t, i) => (
-            <TrackRow key={i} id={id} axis="row" index={i} track={t} />
-          ))}
+          <div className="font-sans text-[#FFFFFFA6] text-xs/4">
+            {grid.rowMode === 'fixed' && grid.rows.length > 1 ? 'Rows' : 'Row'}
+          </div>
+          {grid.rowMode === 'fixed' ? (
+            grid.rows.map((t, i) => <TrackRow key={i} id={id} axis="row" index={i} track={t} />)
+          ) : (
+            <AutoAxisRow id={id} axis="row" />
+          )}
         </div>
       </div>
     </div>
@@ -162,6 +190,21 @@ export function Menus() {
     )
   }
 
+  /* Fixed (explicit row count) vs Auto (implicit rows) */
+  if (m.kind === 'countMode') {
+    const grid = app.entryOf(m.id).grid
+    return (
+      <Menu
+        onClose={() => app.setMenu(null)}
+        style={{ left: m.x - 110, top: m.y }}
+        items={[
+          { label: 'Fixed', checked: grid.rowMode === 'fixed', onSelect: () => app.updateGrid(m.id, { rowMode: 'fixed' }) },
+          { label: 'Auto', checked: grid.rowMode === 'auto', onSelect: () => app.updateGrid(m.id, { rowMode: 'auto' }) },
+        ]}
+      />
+    )
+  }
+
   if (m.kind === 'track') {
     const grid = app.entryOf(m.id).grid
     const track = (m.axis === 'col' ? grid.cols : grid.rows)[m.index]
@@ -173,9 +216,8 @@ export function Menus() {
         style={{ left: m.x - 110, top: m.y }}
         items={[
           { label: 'Fill', checked: track.mode === 'fill', onSelect: () => set('fill') },
-          { label: 'Hug', checked: track.mode === 'hug', onSelect: () => set('hug') },
           { label: 'Fixed', checked: track.mode === 'fixed', onSelect: () => set('fixed') },
-          { label: 'Minmax', checked: track.mode === 'minmax', onSelect: () => set('minmax') },
+          { label: 'Auto', checked: track.mode === 'hug', onSelect: () => set('hug') },
         ]}
       />
     )

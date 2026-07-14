@@ -219,21 +219,50 @@ export default function Canvas() {
     const bands = []
 
     if (entry.layout === 'grid') {
-      const cols = cs.gridTemplateColumns.split(' ').map(parseFloat)
-      const rows = cs.gridTemplateRows.split(' ').map(parseFloat)
       const colGap = parseFloat(cs.columnGap) || 0
       const rowGap = parseFloat(cs.rowGap) || 0
-      let x = padL
-      for (let i = 0; i < cols.length - 1; i++) {
-        x += cols[i]
-        if (colGap > 0) bands.push({ axis: 'col', x: ox + x, y: oy, w: colGap, h: innerH, value: entry.grid.colGap })
-        x += colGap
+
+      /* explicit axes resolve to px lists; Auto axes compute to "none" —
+         then derive the gap positions from the children's edges instead */
+      const kidRects = [...wrapEl.querySelectorAll(':scope > [data-node]')].map((k) => k.getBoundingClientRect())
+      const edgesFromKids = (startKey, endKey) => {
+        const eps = 1
+        const starts = [...new Set(kidRects.map((r) => Math.round(r[startKey])))].sort((a, b) => a - b)
+        return starts.slice(1).map((s) => {
+          const prevEnd = Math.max(
+            ...kidRects.filter((r) => r[endKey] <= s + eps).map((r) => r[endKey]),
+          )
+          return (prevEnd - wRect[startKey === 'left' ? 'left' : 'top']) / ZOOM
+        })
       }
-      let y = padT
-      for (let i = 0; i < rows.length - 1; i++) {
-        y += rows[i]
-        if (rowGap > 0) bands.push({ axis: 'row', x: ox, y: oy + y, w: innerW, h: rowGap, value: entry.grid.rowGap })
-        y += rowGap
+
+      const cols = cs.gridTemplateColumns.split(' ').map(parseFloat)
+      if (colGap > 0) {
+        if (cols.every((n) => Number.isFinite(n))) {
+          let x = padL
+          for (let i = 0; i < cols.length - 1; i++) {
+            x += cols[i]
+            bands.push({ axis: 'col', x: ox + x, y: oy, w: colGap, h: innerH, value: entry.grid.colGap })
+            x += colGap
+          }
+        } else {
+          for (const gx of edgesFromKids('left', 'right'))
+            bands.push({ axis: 'col', x: ox + gx, y: oy, w: colGap, h: innerH, value: entry.grid.colGap })
+        }
+      }
+      const rows = cs.gridTemplateRows.split(' ').map(parseFloat)
+      if (rowGap > 0) {
+        if (rows.every((n) => Number.isFinite(n))) {
+          let y = padT
+          for (let i = 0; i < rows.length - 1; i++) {
+            y += rows[i]
+            bands.push({ axis: 'row', x: ox, y: oy + y, w: innerW, h: rowGap, value: entry.grid.rowGap })
+            y += rowGap
+          }
+        } else {
+          for (const gy of edgesFromKids('top', 'bottom'))
+            bands.push({ axis: 'row', x: ox, y: oy + gy, w: innerW, h: rowGap, value: entry.grid.rowGap })
+        }
       }
     } else {
       // flex wrapper: bands between consecutive children

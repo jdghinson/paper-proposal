@@ -16,7 +16,7 @@ export const Row = ({ className = '', children }) => (
 
 /* 24px-high inset field. Left slot is a 24x24 icon/letter, optional chevron at right.
    If onCommit provided, the value is editable (commit on Enter/blur). */
-export function Field({ label, icon, value, suffix = null, chevron = false, onCommit, mono, title }) {
+export function Field({ label, icon, value, suffix = null, chevron = false, onChevron, onCommit, mono, title }) {
   const [draft, setDraft] = useState(null)
   const inputRef = useRef(null)
   const display = draft ?? String(value)
@@ -57,8 +57,18 @@ export function Field({ label, icon, value, suffix = null, chevron = false, onCo
       <div className="absolute size-6 flex items-center justify-center text-center content-center font-sans font-medium text-[#FFFFFF66] text-xs/4 pointer-events-none">
         {icon ?? label}
       </div>
-      {chevron && (
-        <div className="absolute right-0 h-6 w-5 flex items-center justify-center">
+      {(chevron || onChevron) && (
+        <div
+          className={`absolute right-0 h-6 w-5 flex items-center justify-center ${onChevron ? 'cursor-default' : ''}`}
+          onClick={
+            onChevron
+              ? (e) => {
+                  e.stopPropagation()
+                  onChevron(e)
+                }
+              : undefined
+          }
+        >
           <ChevronDown />
         </div>
       )}
