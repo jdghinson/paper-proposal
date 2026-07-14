@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useApp, layoutStyle, CARD_IDS } from '../store.jsx'
+import { useApp, layoutStyle, CARD_IDS, WRAP_ID, isPinned } from '../store.jsx'
 
 export const ZOOM = 0.59
 
@@ -8,8 +8,6 @@ const BLUE_DASH = '#6FA3F8'
 const PINK = 'rgba(236, 90, 143, 0.28)'
 const PINK_SOLID = '#E64980'
 const SPAN_TINT = 'rgba(75, 132, 247, 0.10)'
-
-const WRAP_ID = 'wrap:experience'
 
 /* ---------------- MyTraj design pieces ---------------- */
 
@@ -37,14 +35,17 @@ function Card({ index, inGrid }) {
   const c = EXPERIENCE[index]
   const ownStyle = layoutStyle(app.entryOf(id)) // null until the card is given a layout
 
-  /* grid-item span (phase 2): how many tracks this card covers */
+  /* grid-item placement: span (always) + explicit start cell (once pinned) */
   let spanStyle
   if (inGrid) {
     const wrap = app.entryOf(WRAP_ID)
     const span = wrap?.spans?.[id] ?? { col: 1, row: 1 }
     const col = Math.min(span.col, wrap.grid.cols.length)
     const row = wrap.grid.rowMode === 'fixed' ? Math.min(span.row, wrap.grid.rows.length) : span.row
-    spanStyle = { gridColumn: `span ${col}`, gridRow: `span ${row}` }
+    const place = wrap?.places?.[id]
+    spanStyle = place
+      ? { gridColumn: `${place.col} / span ${col}`, gridRow: `${place.row} / span ${row}` }
+      : { gridColumn: `span ${col}`, gridRow: `span ${row}` }
   }
 
   return (
@@ -241,6 +242,29 @@ export default function Canvas() {
   const gridItemId = singleCardId && wrap?.layout !== 'none' && wrap?.members?.includes(singleCardId) ? singleCardId : null
 
   const wrapEl = () => artboardRef.current?.querySelector(`[data-node="${WRAP_ID}"]`)
+
+  /* Measure where every member currently sits and freeze it. Called the first
+     time the user moves an item — from then on the grid is explicitly placed and
+     no card re-flows because a neighbor changed. */
+  const pinIfNeeded = () => {
+    if (isPinned(wrap)) return true
+    const artEl = artboardRef.current
+    const wEl = wrapEl()
+    if (!artEl || !wEl || !wrap?.members?.length) return false
+
+    const geo = trackGeometry(wEl, wrap)
+    const places = {}
+    for (const mid of wrap.members) {
+      const cEl = artEl.querySelector(`[data-node="${mid}"]`)
+      if (!cEl) return false
+      const r = cEl.getBoundingClientRect()
+      const [c0] = trackRange(geo.cols, geo.colGap, (r.left - geo.wRect.left) / ZOOM, (r.right - geo.wRect.left) / ZOOM)
+      const [r0] = trackRange(geo.rows, geo.rowGap, (r.top - geo.wRect.top) / ZOOM, (r.bottom - geo.wRect.top) / ZOOM)
+      places[mid] = { col: c0 + 1, row: r0 + 1 }
+    }
+    app.pinPlaces(WRAP_ID, places)
+    return true
+  }
 
   /* measure selection + parent in artboard coordinates; publish for the panel */
   useLayoutEffect(() => {
