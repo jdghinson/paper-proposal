@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useApp, layoutStyle, CARD_IDS } from '../store.jsx'
+import { useApp, layoutStyle, CARD_IDS, WRAP_ID, isPinned, gridDims } from '../store.jsx'
+import { resolveDrop, rectOf } from '../placement.js'
 
 export const ZOOM = 0.59
 
@@ -8,8 +9,7 @@ const BLUE_DASH = '#6FA3F8'
 const PINK = 'rgba(236, 90, 143, 0.28)'
 const PINK_SOLID = '#E64980'
 const SPAN_TINT = 'rgba(75, 132, 247, 0.10)'
-
-const WRAP_ID = 'wrap:experience'
+const INVALID_TINT = 'rgba(230, 73, 128, 0.14)' // refused drop — the pink already used for gaps
 
 /* ---------------- MyTraj design pieces ---------------- */
 
@@ -31,25 +31,29 @@ const EXPERIENCE = [
 ]
 
 /* a card: visual chrome via classes, its own flex layout via store entry */
-function Card({ index, inGrid }) {
+function Card({ index, inGrid, onItemPointerDown }) {
   const app = useApp()
   const id = `exp-${index}`
   const c = EXPERIENCE[index]
   const ownStyle = layoutStyle(app.entryOf(id)) // null until the card is given a layout
 
-  /* grid-item span (phase 2): how many tracks this card covers */
+  /* grid-item placement: span (always) + explicit start cell (once pinned) */
   let spanStyle
   if (inGrid) {
     const wrap = app.entryOf(WRAP_ID)
     const span = wrap?.spans?.[id] ?? { col: 1, row: 1 }
     const col = Math.min(span.col, wrap.grid.cols.length)
     const row = wrap.grid.rowMode === 'fixed' ? Math.min(span.row, wrap.grid.rows.length) : span.row
-    spanStyle = { gridColumn: `span ${col}`, gridRow: `span ${row}` }
+    const place = wrap?.places?.[id]
+    spanStyle = place
+      ? { gridColumn: `${place.col} / span ${col}`, gridRow: `${place.row} / span ${row}` }
+      : { gridColumn: `span ${col}`, gridRow: `span ${row}` }
   }
 
   return (
     <div
       data-node={id}
+      onPointerDown={inGrid ? (e) => onItemPointerDown?.(e, id) : undefined}
       onClick={(e) => {
         e.stopPropagation()
         app.selectCard(id, e.shiftKey)
@@ -71,7 +75,7 @@ function Card({ index, inGrid }) {
 }
 
 /* the row of cards; Add grid wraps only the selected cards in a new container */
-function ExperienceRow({ onGapMove, onGapLeave }) {
+function ExperienceRow({ onGapMove, onGapLeave, onItemPointerDown }) {
   const app = useApp()
   const wrap = app.entryOf(WRAP_ID)
   const hasWrap = wrap && wrap.layout !== 'none' && wrap.members?.length
@@ -97,7 +101,7 @@ function ExperienceRow({ onGapMove, onGapLeave }) {
             className="relative"
           >
             {members.map((mid) => (
-              <Card key={mid} index={CARD_IDS.indexOf(mid)} inGrid />
+              <Card key={mid} index={CARD_IDS.indexOf(mid)} inGrid onItemPointerDown={onItemPointerDown} />
             ))}
           </div>,
         )
@@ -114,13 +118,13 @@ function ExperienceRow({ onGapMove, onGapLeave }) {
   )
 }
 
-function MyTrajArtboard({ onGapMove, onGapLeave }) {
+function MyTrajArtboard({ onGapMove, onGapLeave, onItemPointerDown }) {
   return (
     <div className="w-[1440px] bg-[#FDFCFF] font-hanken text-[#21243C]" data-node="artboard">
       <div className="w-[760px] mx-auto py-24" data-node="frame:content">
         <div className="text-[16px] font-semibold">How much experience do you have?</div>
         <div className="mt-3">
-          <ExperienceRow onGapMove={onGapMove} onGapLeave={onGapLeave} />
+          <ExperienceRow onGapMove={onGapMove} onGapLeave={onGapLeave} onItemPointerDown={onItemPointerDown} />
         </div>
       </div>
     </div>
@@ -233,6 +237,9 @@ export default function Canvas() {
   const [marks, setMarks] = useState(null) // {box, nodes:[], parent}
   const [gap, setGap] = useState(null) // {bands:[], badge:{x,y,value}}
   const [drag, setDrag] = useState(null) // {cardId, edge, axis, anchor}
+  const [move, setMove] = useState(null) // {cardId, grab:{x,y}, target, ok, ghost}
+  const moveRef = useRef(null) // live mirror of `move` — pointer events can outrun React renders
+  const armed = useRef(null) // {cardId, x, y} — pointer is down, threshold not yet crossed
   const dragJustEnded = useRef(false)
 
   const wrap = app.entryOf(WRAP_ID)
@@ -241,6 +248,152 @@ export default function Canvas() {
   const gridItemId = singleCardId && wrap?.layout !== 'none' && wrap?.members?.includes(singleCardId) ? singleCardId : null
 
   const wrapEl = () => artboardRef.current?.querySelector(`[data-node="${WRAP_ID}"]`)
+
+  /* Measure where every member currently sits and freeze it. Called the first
+     time the user moves an item — from then on the grid is explicitly placed and
+     no card re-flows because a neighbor changed. */
+  const pinIfNeeded = () => {
+    if (isPinned(wrap)) return true
+    const artEl = artboardRef.current
+    const wEl = wrapEl()
+    if (!artEl || !wEl || !wrap?.members?.length) return false
+
+    const geo = trackGeometry(wEl, wrap)
+    const places = {}
+    for (const mid of wrap.members) {
+      const cEl = artEl.querySelector(`[data-node="${mid}"]`)
+      if (!cEl) return false
+      const r = cEl.getBoundingClientRect()
+      const [c0] = trackRange(geo.cols, geo.colGap, (r.left - geo.wRect.left) / ZOOM, (r.right - geo.wRect.left) / ZOOM)
+      const [r0] = trackRange(geo.rows, geo.rowGap, (r.top - geo.wRect.top) / ZOOM, (r.bottom - geo.wRect.top) / ZOOM)
+      places[mid] = { col: c0 + 1, row: r0 + 1 }
+    }
+    app.pinPlaces(WRAP_ID, places)
+    return true
+  }
+
+  /* ---------------- body-drag item move ---------------- */
+
+  const MOVE_THRESHOLD = 3 // px — below this it is a click, and selection wins
+
+  const onItemPointerDown = (e, cardId) => {
+    if (e.button !== 0) return
+    /* capture so the release click lands on this card (selecting it),
+       not on whatever cell it was dropped over */
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      /* no active pointer (synthetic event) — the drag still works, uncaptured */
+    }
+    armed.current = { cardId, x: e.clientX, y: e.clientY }
+  }
+
+  useEffect(() => {
+    /* where the card would land for a pointer position — shared by preview and drop */
+    const previewAt = (e, m) => {
+      const wEl = wrapEl()
+      const artEl = artboardRef.current
+      if (!wEl || !artEl) return null
+      const entry = app.entryOf(WRAP_ID)
+      const geo = trackGeometry(wEl, entry)
+      const dims = gridDims(entry)
+      const span = entry.spans?.[m.cardId] ?? { col: 1, row: 1 }
+
+      /* the cell under the card's own top-left corner, not under the cursor —
+         so a card you grabbed by its middle doesn't jump */
+      const x = (e.clientX - geo.wRect.left) / ZOOM - m.grab.x
+      const y = (e.clientY - geo.wRect.top) / ZOOM - m.grab.y
+      const clamp = (n, max) => Math.max(1, Math.min(max, n))
+      const col = clamp(trackIndexAt(geo.cols, geo.colGap, x + 2) + 1, dims.cols - span.col + 1)
+      const row = clamp(trackIndexAt(geo.rows, geo.rowGap, y + 2) + 1, Math.max(1, geo.rows.length - span.row + 1))
+
+      const target = { col, row }
+      const ok = resolveDrop(entry, m.cardId, target, dims).ok
+      const artRect = artEl.getBoundingClientRect()
+      const cEl = artEl.querySelector(`[data-node="${m.cardId}"]`)
+      if (!cEl) return null
+      const cRect = cEl.getBoundingClientRect()
+      return { target, ok, ghost: { x: e.clientX - artRect.left, y: e.clientY - artRect.top, w: cRect.width, h: cRect.height } }
+    }
+
+    const onMove = (e) => {
+      /* cross the threshold: pin the grid, then start moving */
+      if (armed.current && !moveRef.current) {
+        const a = armed.current
+        if (Math.hypot(e.clientX - a.x, e.clientY - a.y) < MOVE_THRESHOLD) return
+        if (!pinIfNeeded()) {
+          armed.current = null
+          return
+        }
+        const cEl = artboardRef.current?.querySelector(`[data-node="${a.cardId}"]`)
+        if (!cEl) {
+          armed.current = null
+          return
+        }
+        const r = cEl.getBoundingClientRect()
+        app.selectCard(a.cardId) // grabbing an item selects it, so the overlay follows the drag
+        const m = {
+          cardId: a.cardId,
+          grab: { x: (a.x - r.left) / ZOOM, y: (a.y - r.top) / ZOOM },
+          target: null,
+          ok: false,
+          ghost: null,
+        }
+        moveRef.current = m
+        setMove(m)
+        return
+      }
+      const m = moveRef.current
+      if (!m) return
+      const p = previewAt(e, m)
+      if (!p) return
+      const next = { ...m, ...p }
+      moveRef.current = next
+      setMove(next)
+    }
+
+    const onUp = (e) => {
+      const m = moveRef.current
+      if (m) {
+        /* judge the drop from the release point itself — the last pointermove
+           may not have rendered yet (or never fired, on a fast flick) */
+        const p = previewAt(e, m) ?? m
+        if (p.ok && p.target) app.moveItem(WRAP_ID, m.cardId, p.target)
+        moveRef.current = null
+        setMove(null)
+        dragJustEnded.current = true
+        requestAnimationFrame(() => (dragJustEnded.current = false))
+      }
+      armed.current = null
+    }
+
+    const onKey = (e) => {
+      if (e.key === 'Escape' && moveRef.current) {
+        moveRef.current = null
+        setMove(null)
+        armed.current = null
+      }
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [app.layouts]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!move) return
+    document.body.style.cursor = 'grabbing'
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [move])
 
   /* measure selection + parent in artboard coordinates; publish for the panel */
   useLayoutEffect(() => {
@@ -392,11 +545,32 @@ export default function Canvas() {
       const pos = ((drag.axis === 'col' ? e.clientX : e.clientY) - origin) / ZOOM
 
       /* the card snaps once the pointer crosses a track's midpoint */
-      const span =
-        drag.edge === 'right' || drag.edge === 'bottom'
-          ? Math.max(drag.anchor, lastMidpointBefore(tracks, pos)) - drag.anchor + 1
-          : drag.anchor - Math.min(drag.anchor, firstMidpointAfter(tracks, pos)) + 1
-      app.updateSpan(WRAP_ID, drag.cardId, { [drag.axis]: Math.max(1, span) })
+      const entry = app.entryOf(WRAP_ID)
+      const growing = drag.edge === 'right' || drag.edge === 'bottom'
+      const edgeIdx = growing
+        ? Math.max(drag.anchor, lastMidpointBefore(tracks, pos))
+        : Math.min(drag.anchor, firstMidpointAfter(tracks, pos))
+      const start = Math.min(drag.anchor, edgeIdx)
+      const span = Math.abs(edgeIdx - drag.anchor) + 1
+
+      if (!entry?.places) {
+        app.updateSpan(WRAP_ID, drag.cardId, { [drag.axis]: Math.max(1, span) })
+        return
+      }
+
+      /* pinned: ask for the full rect, so a left/top drag moves the start cell;
+         resizeItem clamps at the first occupied cell */
+      const cur = rectOf(entry, drag.cardId)
+      if (!cur) return // pinned grid, but this card was never pinned
+      const desired = { ...cur }
+      if (drag.axis === 'col') {
+        desired.col = start + 1
+        desired.colSpan = Math.max(1, span)
+      } else {
+        desired.row = start + 1
+        desired.rowSpan = Math.max(1, span)
+      }
+      app.resizeItem(WRAP_ID, drag.cardId, desired)
     }
 
     const onUp = () => {
@@ -415,9 +589,9 @@ export default function Canvas() {
     }
   }, [drag]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* track guides + projected span while dragging */
+  /* track guides + projected span while dragging (edge resize or body move) */
   let guides = null
-  if (drag && artboardRef.current) {
+  if ((drag || move) && artboardRef.current) {
     const wEl = wrapEl()
     const artEl = artboardRef.current
     if (wEl) {
@@ -425,9 +599,19 @@ export default function Canvas() {
       const artRect = artEl.getBoundingClientRect()
       const ox = (geo.wRect.left - artRect.left) / ZOOM
       const oy = (geo.wRect.top - artRect.top) / ZOOM
-      const cEl = artEl.querySelector(`[data-node="${drag.cardId}"]`)
+      const active = drag ?? move
+      const cEl = artEl.querySelector(`[data-node="${active.cardId}"]`)
       let span = null
-      if (cEl) {
+      if (move && move.target) {
+        /* the cells the card will land in */
+        const s = wrap.spans?.[move.cardId] ?? { col: 1, row: 1 }
+        const c0 = geo.cols[move.target.col - 1]
+        const r0 = geo.rows[move.target.row - 1]
+        const c1 = geo.cols[Math.min(geo.cols.length, move.target.col + s.col - 1) - 1]
+        const r1 = geo.rows[Math.min(geo.rows.length, move.target.row + s.row - 1) - 1]
+        if (c0 && r0 && c1 && r1)
+          span = { x: ox + c0.start, y: oy + r0.start, w: c1.start + c1.size - c0.start, h: r1.start + r1.size - r0.start }
+      } else if (cEl) {
         const cRect = cEl.getBoundingClientRect()
         span = {
           x: (cRect.left - artRect.left) / ZOOM,
@@ -436,7 +620,7 @@ export default function Canvas() {
           h: cRect.height / ZOOM,
         }
       }
-      guides = { ox, oy, geo, span }
+      guides = { ox, oy, geo, span, invalid: Boolean(move && move.target && !move.ok) }
     }
   }
 
@@ -445,7 +629,7 @@ export default function Canvas() {
 
   /* edge handle geometry (screen px) for the selected grid item */
   const handleSpecs =
-    gridItemId && marks && marks.nodes.length === 1
+    gridItemId && marks && marks.nodes.length === 1 && !move
       ? [
           { edge: 'left', x: marks.box.x, y: marks.box.y + marks.box.h / 2, cursor: 'col-resize', vert: true },
           { edge: 'right', x: marks.box.x + marks.box.w, y: marks.box.y + marks.box.h / 2, cursor: 'col-resize', vert: true },
@@ -472,7 +656,7 @@ export default function Canvas() {
             ref={artboardRef}
             className="shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_18px_60px_rgba(0,0,0,0.45)]"
           >
-            <MyTrajArtboard onGapMove={handleGapMove} onGapLeave={clearGap} />
+            <MyTrajArtboard onGapMove={handleGapMove} onGapLeave={clearGap} onItemPointerDown={onItemPointerDown} />
           </div>
 
           {/* screen-space selection overlay */}
@@ -499,7 +683,7 @@ export default function Canvas() {
                         top: guides.span.y * ZOOM,
                         width: guides.span.w * ZOOM,
                         height: guides.span.h * ZOOM,
-                        background: SPAN_TINT,
+                        background: guides.invalid ? INVALID_TINT : SPAN_TINT,
                       }}
                     />
                   )}
@@ -530,8 +714,22 @@ export default function Canvas() {
                 </>
               )}
 
+              {/* the ghost: the grabbed card following the cursor */}
+              {move && move.ghost && (
+                <div
+                  className="absolute rounded-[10px] border border-[#4B84F7] bg-white/70 pointer-events-none"
+                  style={{
+                    left: move.ghost.x - move.grab.x * ZOOM,
+                    top: move.ghost.y - move.grab.y * ZOOM,
+                    width: move.ghost.w,
+                    height: move.ghost.h,
+                    opacity: 0.6,
+                  }}
+                />
+              )}
+
               {/* dashed parent frame */}
-              {marks.parent && !drag && (
+              {marks.parent && !drag && !move && (
                 <div
                   className="absolute"
                   style={{
@@ -581,20 +779,22 @@ export default function Canvas() {
                 ))}
 
                 {/* size pill */}
-                <div
-                  className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-white"
-                  style={{
-                    top: '100%',
-                    marginTop: 8,
-                    background: '#4E80F0',
-                    borderRadius: 5,
-                    fontSize: 11.5,
-                    lineHeight: '14px',
-                    padding: '4px 8px',
-                  }}
-                >
-                  {pill}
-                </div>
+                {!move && (
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-white"
+                    style={{
+                      top: '100%',
+                      marginTop: 8,
+                      background: '#4E80F0',
+                      borderRadius: 5,
+                      fontSize: 11.5,
+                      lineHeight: '14px',
+                      padding: '4px 8px',
+                    }}
+                  >
+                    {pill}
+                  </div>
+                )}
               </div>
 
               {/* edge handles: drag to change how many tracks the item spans */}
