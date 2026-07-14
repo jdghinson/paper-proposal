@@ -282,11 +282,7 @@ function GridSection({ id }) {
             <SlidersIcon />
           </IconBtn>
           {grid.itemPos.x !== 'stretch' && (
-            <IconBtn
-              className="bg-[#3D3D3D] hover:bg-[#464646]"
-              onClick={() => G({ itemPos: { x: 'stretch', y: 'stretch' } })}
-              title="Reset item position to stretch"
-            >
+            <IconBtn onClick={() => G({ itemPos: { x: 'stretch', y: 'stretch' } })} title="Reset item position to stretch">
               <StretchResetIcon />
             </IconBtn>
           )}
