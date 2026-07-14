@@ -353,6 +353,52 @@ export const FrameLayerIcon = () => (
   </svg>
 )
 
+// Grid layer icon — 2x2 filled rounded squares (self-colored, no dimming)
+export const GridLayerIcon = () => (
+  <svg viewBox="0 0 12 12" width="12" height="12" style={{ flexShrink: 0, overflow: 'visible' }}>
+    <path
+      transform="translate(1.31 1.31)"
+      d="M0.281-0.187C0.281-0.187 3.469-0.187 3.469-0.187 3.728-0.187 3.938 0.023 3.938 0.282 3.938 0.282 3.938 3.47 3.938 3.47 3.938 3.728 3.728 3.938 3.469 3.938 3.469 3.938 0.281 3.938 0.281 3.938 0.022 3.938-0.188 3.728-0.188 3.47-0.188 3.47-0.188 0.282-0.188 0.282-0.188 0.023 0.022-0.187 0.281-0.187Z"
+      vectorEffect="non-scaling-stroke" fill="#363636" stroke="#A5A5A5" strokeLinecap="round" strokeLinejoin="round"
+    />
+    <path
+      transform="translate(7.87 1.31)"
+      d="M-0.656-0.187C-0.656-0.187 2.532-0.187 2.532-0.187 2.79-0.187 3 0.023 3 0.282 3 0.282 3 3.47 3 3.47 3 3.728 2.79 3.938 2.532 3.938 2.532 3.938-0.656 3.938-0.656 3.938-0.915 3.938-1.125 3.728-1.125 3.47-1.125 3.47-1.125 0.282-1.125 0.282-1.125 0.023-0.915-0.187-0.656-0.187Z"
+      vectorEffect="non-scaling-stroke" fill="#363636" stroke="#A5A5A5" strokeLinecap="round" strokeLinejoin="round"
+    />
+    <path
+      transform="translate(1.31 7.87)"
+      d="M0.281-1.124C0.281-1.124 3.469-1.124 3.469-1.124 3.728-1.124 3.938-0.914 3.938-0.655 3.938-0.655 3.938 2.532 3.938 2.532 3.938 2.791 3.728 3.001 3.469 3.001 3.469 3.001 0.281 3.001 0.281 3.001 0.022 3.001-0.188 2.791-0.188 2.532-0.188 2.532-0.188-0.655-0.188-0.655-0.188-0.914 0.022-1.124 0.281-1.124Z"
+      vectorEffect="non-scaling-stroke" fill="#363636" stroke="#A5A5A5" strokeLinecap="round" strokeLinejoin="round"
+    />
+    <path
+      transform="translate(7.87 7.87)"
+      d="M-0.656-1.124C-0.656-1.124 2.532-1.124 2.532-1.124 2.79-1.124 3-0.914 3-0.655 3-0.655 3 2.532 3 2.532 3 2.791 2.79 3.001 2.532 3.001 2.532 3.001-0.656 3.001-0.656 3.001-0.915 3.001-1.125 2.791-1.125 2.532-1.125 2.532-1.125-0.655-1.125-0.655-1.125-0.914-0.915-1.124-0.656-1.124Z"
+      vectorEffect="non-scaling-stroke" fill="#363636" stroke="#A5A5A5" strokeLinecap="round" strokeLinejoin="round"
+    />
+  </svg>
+)
+
+// Frame vertical-stack layer icon — two stacked horizontal slots
+export const VStackLayerIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" style={{ flexShrink: 0 }}>
+    <rect x="2" y="2.5" width="12" height="4.5" rx="1" fill={W(0.09)} />
+    <rect x="2.5" y="3" width="11" height="3.5" rx="0.5" fill="none" stroke={W(0.9)} />
+    <rect x="2" y="8.5" width="12" height="4.5" rx="1" fill={W(0.09)} />
+    <rect x="2.5" y="9" width="11" height="3.5" rx="0.5" fill="none" stroke={W(0.9)} />
+  </svg>
+)
+
+// Frame horizontal-stack layer icon — two side-by-side vertical slots
+export const HStackLayerIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" style={{ flexShrink: 0 }}>
+    <rect x="2" y="3" width="5" height="10.5" rx="1" fill={W(0.09)} />
+    <rect x="2.5" y="3.5" width="4" height="9.5" rx="0.5" fill="none" stroke={W(0.9)} />
+    <rect x="8.5" y="3" width="5" height="10.5" rx="1" fill={W(0.09)} />
+    <rect x="9" y="3.5" width="4" height="9.5" rx="0.5" fill="none" stroke={W(0.9)} />
+  </svg>
+)
+
 // Text layer icon
 export const TextLayerIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" style={{ flexShrink: 0 }}>

@@ -6,11 +6,20 @@ import {
   PageIcon,
   PlusIcon,
   ArtboardLayerIcon,
-  FrameLayerIcon,
   TextLayerIcon,
+  GridLayerIcon,
+  VStackLayerIcon,
+  HStackLayerIcon,
 } from '../icons.jsx'
 
 const CARD_NAMES = ['Entry Level', 'Mid-Level', 'Senior', 'Lead / Principal', 'Executive']
+
+/* a frame's layer icon reflects its layout: grid, or a flex stack by direction */
+function layoutIcon(entry, fallback) {
+  if (!entry || entry.layout === 'none') return fallback
+  if (entry.layout === 'grid') return 'grid'
+  return entry.flex.dir === 'row' ? 'hstack' : 'vstack'
+}
 
 /* layer tree mirrors the canvas; the wrapper frame appears when Add grid/flex creates it */
 function buildTree(app) {
@@ -20,9 +29,9 @@ function buildTree(app) {
 
   const rows = [
     { d: 0, icon: 'artboard', name: 'Onboarding · Filled state', chevron: true, artboard: true },
-    { d: 1, icon: 'frame', name: 'Frame', chevron: true },
+    { d: 1, icon: 'vstack', name: 'Frame', chevron: true }, // content column
     { d: 2, icon: 'text', name: 'How much experience …' },
-    { d: 2, icon: 'frame', name: 'Frame', chevron: true, sel: 'group:experience' },
+    { d: 2, icon: 'hstack', name: 'Frame', chevron: true, sel: 'group:experience' }, // cards row
   ]
 
   let wrapperInserted = false
@@ -31,13 +40,25 @@ function buildTree(app) {
     if (members.includes(id)) {
       if (!wrapperInserted) {
         wrapperInserted = true
-        rows.push({ d: 3, icon: 'frame', name: wrap.layout === 'grid' ? 'Grid' : 'Frame', chevron: true, sel: 'wrap:experience' })
+        rows.push({
+          d: 3,
+          icon: layoutIcon(wrap, 'vstack'),
+          name: wrap.layout === 'grid' ? 'Grid' : 'Frame',
+          chevron: true,
+          sel: 'wrap:experience',
+        })
         members.forEach((mid) => {
-          rows.push({ d: 4, icon: 'frame', name: CARD_NAMES[Number(mid.split('-')[1])], chevron: true, sel: mid })
+          rows.push({
+            d: 4,
+            icon: layoutIcon(app.entryOf(mid), 'vstack'),
+            name: CARD_NAMES[Number(mid.split('-')[1])],
+            chevron: true,
+            sel: mid,
+          })
         })
       }
     } else {
-      rows.push({ d: 3, icon: 'frame', name, chevron: true, sel: id })
+      rows.push({ d: 3, icon: layoutIcon(app.entryOf(id), 'vstack'), name, chevron: true, sel: id })
     }
   })
   return rows
@@ -49,8 +70,12 @@ const LayerIcon = ({ kind }) => {
       return <ArtboardLayerIcon />
     case 'text':
       return <TextLayerIcon />
+    case 'grid':
+      return <GridLayerIcon />
+    case 'hstack':
+      return <HStackLayerIcon />
     default:
-      return <FrameLayerIcon />
+      return <VStackLayerIcon />
   }
 }
 
@@ -137,7 +162,9 @@ export default function Sidebar() {
                 <div className="flex items-center h-full shrink-0 w-5 justify-center">
                   {row.chevron && <TreeChevron />}
                 </div>
-                <div className="flex items-center justify-center opacity-60 shrink-0 size-3">
+                <div
+                  className={`flex items-center justify-center shrink-0 size-3 ${row.icon === 'grid' ? '' : 'opacity-60'}`}
+                >
                   <LayerIcon kind={row.icon} />
                 </div>
                 <div className="ml-2 font-sans text-[#FFFFFFE6] text-xs/4 whitespace-nowrap">{row.name}</div>
