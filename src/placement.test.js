@@ -163,4 +163,27 @@ describe('clampRect', () => {
     expect(withinGrid(r, dims)).toBe(true)
     expect(occupantsOf(e, r, 'x')).toEqual([])
   })
+
+  it('returns null when the pinned current rect is stale and no longer fits the grid', () => {
+    // 'a' was pinned at col 5 back when the grid was wider; dims has since
+    // shrunk to 3 cols, so the pinned rect itself is out of grid. There is no
+    // legal rect to fall back to, so clampRect must refuse rather than hand
+    // back the stale, out-of-grid rect unvalidated.
+    const e = { members: ['a'], spans: { a: { col: 1, row: 1 } }, places: { a: { col: 5, row: 1 } } }
+    const r = clampRect(e, 'a', { col: 5, row: 1, colSpan: 1, rowSpan: 1 }, { cols: 3, rows: 2 })
+    expect(r).toBeNull()
+  })
+
+  it('returns null when the pinned current rect already overlaps another item', () => {
+    // 'a' and 'b' are both (stalely) pinned to the same cell. a's current rect
+    // is within the grid but overlaps b, so it is not legal either — clampRect
+    // must not hand back an already-overlapping rect.
+    const e = {
+      members: ['a', 'b'],
+      spans: { a: { col: 1, row: 1 }, b: { col: 1, row: 1 } },
+      places: { a: { col: 1, row: 1 }, b: { col: 1, row: 1 } },
+    }
+    const r = clampRect(e, 'a', { col: 1, row: 1, colSpan: 1, rowSpan: 1 }, dims)
+    expect(r).toBeNull()
+  })
 })

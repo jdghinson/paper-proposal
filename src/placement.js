@@ -88,15 +88,20 @@ export function resolveDrop(entry, id, target, dims) {
    rowSpan back; growing left/up pushes col or row forward, keeping the far edge
    where the user put it.
 
-   Requires a pinned item: `rectOf(entry, id)` must be non-null. There is no
-   origin to retreat toward and no legal rect to fall back to for an unpinned
-   item, so callers must pin the item's start cell before resizing it. If the
-   item isn't pinned, clampRect returns null rather than guess. */
+   Returns Rect | null:
+   - null when the item isn't pinned (`rectOf(entry, id)` is null — there is no
+     origin to retreat toward), OR when its pinned `current` rect is itself not
+     legal under this call's `dims` and occupancy (e.g. stale — pinned before
+     the grid shrank, or already overlapping another item). In both cases the
+     honest answer is "there is no rect to give you"; the caller must re-pin or
+     re-clamp the item first.
+   - otherwise, a Rect that both satisfies withinGrid and has zero occupants —
+     no third possibility. */
 export function clampRect(entry, id, desired, dims) {
   const current = rectOf(entry, id)
-  if (!current) return null
+  const legal = (rect) => rect && withinGrid(rect, dims) && occupantsOf(entry, rect, id).length === 0
+  if (!legal(current)) return null
 
-  const legal = (rect) => withinGrid(rect, dims) && occupantsOf(entry, rect, id).length === 0
   if (legal(desired)) return desired
 
   const growingLeft = desired.col < current.col
@@ -115,6 +120,8 @@ export function clampRect(entry, id, desired, dims) {
   if (legal(rect)) return rect
 
   /* the shrunk rect is still illegal (e.g. no span left to give): fall back
-     to the item's pinned current rect, which is legal by definition */
+     to the item's pinned current rect. Safe because of the guard above —
+     we already confirmed `current` is legal under this call's dims and
+     occupancy before ever reaching here. */
   return current
 }
