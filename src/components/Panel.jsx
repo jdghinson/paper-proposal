@@ -171,22 +171,19 @@ function AddLayoutButtons() {
   )
 }
 
-/* ---------------- Grid item (phase 2): the card's col/row area ---------------- */
+/* ---------------- Grid item (phase 2): how many cells the card covers ---------------- */
 
-/* "1–3" or "2" → span count; a range sets end-start+1, a number sets the span */
-const parseSpan = (v, info, axis) => {
-  const range = String(v).match(/(\d+)\s*[–-]\s*(\d+)/)
-  if (range) return Math.abs(Number(range[2]) - Number(range[1])) + 1
+const parseSpan = (v, fallback) => {
   const n = parseInt(v, 10)
-  if (Number.isFinite(n)) return Math.max(1, n)
-  return axis === 'col' ? info.colEnd - info.colStart + 1 : info.rowEnd - info.rowStart + 1
+  return Number.isFinite(n) ? Math.max(1, n) : fallback
 }
 
 function GridItemSection({ cardId }) {
   const app = useApp()
   const info = useGridItem()
   if (!info) return null
-  const label = (s, e) => (s === e ? String(s) : `${s}–${e}`)
+  const colSpan = info.colEnd - info.colStart + 1
+  const rowSpan = info.rowEnd - info.rowStart + 1
 
   return (
     <div className="mt-1">
@@ -196,15 +193,15 @@ function GridItemSection({ cardId }) {
       <Row>
         <Field
           icon={<ColumnsIcon />}
-          value={label(info.colStart, info.colEnd)}
-          onCommit={(v) => app.updateSpan('wrap:experience', cardId, { col: parseSpan(v, info, 'col') })}
-          title="Column area — a number sets the span"
+          value={colSpan}
+          onCommit={(v) => app.updateSpan('wrap:experience', cardId, { col: parseSpan(v, colSpan) })}
+          title="Columns covered"
         />
         <Field
           icon={<ColumnsIcon rotate={90} />}
-          value={label(info.rowStart, info.rowEnd)}
-          onCommit={(v) => app.updateSpan('wrap:experience', cardId, { row: parseSpan(v, info, 'row') })}
-          title="Row area — a number sets the span"
+          value={rowSpan}
+          onCommit={(v) => app.updateSpan('wrap:experience', cardId, { row: parseSpan(v, rowSpan) })}
+          title="Rows covered"
         />
         <div className="shrink-0 size-6 -m-1" />
       </Row>
