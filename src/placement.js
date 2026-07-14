@@ -43,6 +43,53 @@ export const withinGrid = (rect, dims) =>
   rect.col + rect.colSpan - 1 <= dims.cols &&
   rect.row + rect.rowSpan - 1 <= dims.rows
 
+/* A grid-shape edit (fewer columns, rows switched to a smaller Fixed count)
+   can strand a pinned place outside the new dims. Decide what the places
+   become under `dims`:
+
+   - every rect still fits          -> the same `places` object, untouched
+   - a stranded start can be pulled
+     inward without touching anyone -> a new places map with just those moves
+   - anything else (a clamp would
+     overlap, or a span alone is
+     bigger than the grid)          -> null, meaning "unpin the grid": places
+                                       should be deleted and the grid returns
+                                       to honest auto-placement
+
+   In-bounds items are never moved — only stranded ones are pulled in. */
+export function reclampPlaces(entry, dims) {
+  const places = entry.places
+  if (!places) return places
+
+  let changed = false
+  const next = {}
+  for (const id of entry.members ?? []) {
+    const place = places[id]
+    if (!place) continue // pinned grid, but this member never got a place
+    const span = spanOf(entry, id)
+    const maxCol = dims.cols - span.col + 1
+    const maxRow = dims.rows - span.row + 1
+    if (maxCol < 1 || maxRow < 1) return null // the span alone can't fit
+    const col = Math.max(1, Math.min(place.col, maxCol))
+    const row = Math.max(1, Math.min(place.row, maxRow))
+    if (col !== place.col || row !== place.row) changed = true
+    next[id] = { col, row }
+  }
+  if (!changed) return places
+
+  /* the pulled-in rects must not land on anyone — pinned placement never
+     invents new positions, so any collision means the whole grid unpins */
+  const rectAt = (id) => {
+    const span = spanOf(entry, id)
+    return { col: next[id].col, row: next[id].row, colSpan: span.col, rowSpan: span.row }
+  }
+  const ids = Object.keys(next)
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) if (overlaps(rectAt(ids[i]), rectAt(ids[j]))) return null
+
+  return next
+}
+
 /* Where a dropped item lands. Empty target -> it just moves. Exactly one
    occupant -> the two swap, each keeping its own span; refused if the displaced
    item can't legally sit at the dragged item's old start. Two or more -> refused,

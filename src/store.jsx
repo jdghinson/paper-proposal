@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState } from 'react'
-import { resolveDrop, clampRect, rectOf } from './placement.js'
+import { resolveDrop, clampRect, rectOf, reclampPlaces } from './placement.js'
 
 /* ------------------------------------------------------------------
    App state. Layouts are keyed by node id:
@@ -70,6 +70,22 @@ const growRowsToFit = (entry) => {
   const rows = g.rows.slice()
   while (rows.length < need) rows.push(makeTrack())
   return { ...entry, grid: { ...g, rows } }
+}
+
+/* A grid-shape edit can strand a pinned place outside the new dims (the card
+   would render into an implicit track past the drawn grid, and clampRect
+   would refuse it forever). Pull stranded places inward; when no legal pinned
+   state exists, unpin the grid entirely — auto-placement is always truthful
+   and never overlaps, and the user can re-move to re-pin. */
+const reclampEntry = (entry) => {
+  if (!entry.places) return entry
+  const places = reclampPlaces(entry, gridDims(entry))
+  if (places === entry.places) return entry
+  if (!places) {
+    const { places: _dropped, ...unpinned } = entry
+    return unpinned
+  }
+  return { ...entry, places }
 }
 
 export const WRAP_ID = 'wrap:experience'
@@ -193,8 +209,10 @@ export function AppProvider({ children }) {
         setLayouts((prev) => {
           let entry = { ...prev[id], grid: { ...prev[id].grid, ...patch } }
           /* picking Fixed rows: give it enough rows to actually hold the items,
-             otherwise "Fixed N" would be a lie the moment anything overflows */
-          if (patch.rowMode === 'fixed') entry = growRowsToFit(entry)
+             otherwise "Fixed N" would be a lie the moment anything overflows.
+             Fixed rows also shrink the placement ceiling (auto rows had
+             headroom), so pinned places may now be stranded — re-clamp. */
+          if (patch.rowMode === 'fixed') entry = reclampEntry(growRowsToFit(entry))
           return { ...prev, [id]: entry }
         })
       },
@@ -211,7 +229,9 @@ export function AppProvider({ children }) {
           const tracks = grid[key].slice(0, n)
           while (tracks.length < n) tracks.push(makeTrack())
           const entry = { ...prev[id], grid: { ...grid, [key]: tracks } }
-          return { ...prev, [id]: autoRowsIfOverflowing(entry) }
+          /* shrinking a track count can strand pinned places — re-clamp after
+             the overflow rule settles the final row mode */
+          return { ...prev, [id]: reclampEntry(autoRowsIfOverflowing(entry)) }
         })
       },
 
