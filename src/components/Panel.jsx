@@ -35,15 +35,27 @@ const num = (v, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback
 }
 
-/* selection bbox published by Canvas */
+/* selection bbox + grid-item info published by Canvas */
 function useSelBox() {
   const [box, setBox] = useState(window.__selBox ?? null)
   useEffect(() => {
     const fn = () => setBox(window.__selBox ?? null)
+    fn() // canvas publishes in a layout effect, before this subscription — sync now
     window.addEventListener('selbox', fn)
     return () => window.removeEventListener('selbox', fn)
   }, [])
   return box
+}
+
+function useGridItem() {
+  const [info, setInfo] = useState(window.__gridItem ?? null)
+  useEffect(() => {
+    const fn = () => setInfo(window.__gridItem ?? null)
+    fn() // canvas publishes in a layout effect, before this subscription — sync now
+    window.addEventListener('selbox', fn)
+    return () => window.removeEventListener('selbox', fn)
+  }, [])
+  return info
 }
 
 /* ---------------- top: avatar / zoom / copy link ---------------- */
@@ -156,6 +168,47 @@ function AddLayoutButtons() {
         </div>
       )}
     </Row>
+  )
+}
+
+/* ---------------- Grid item (phase 2): the card's col/row area ---------------- */
+
+/* "1–3" or "2" → span count; a range sets end-start+1, a number sets the span */
+const parseSpan = (v, info, axis) => {
+  const range = String(v).match(/(\d+)\s*[–-]\s*(\d+)/)
+  if (range) return Math.abs(Number(range[2]) - Number(range[1])) + 1
+  const n = parseInt(v, 10)
+  if (Number.isFinite(n)) return Math.max(1, n)
+  return axis === 'col' ? info.colEnd - info.colStart + 1 : info.rowEnd - info.rowStart + 1
+}
+
+function GridItemSection({ cardId }) {
+  const app = useApp()
+  const info = useGridItem()
+  if (!info) return null
+  const label = (s, e) => (s === e ? String(s) : `${s}–${e}`)
+
+  return (
+    <div className="mt-1">
+      <div className="flex items-center h-6 px-3">
+        <div className="h-full content-center font-sans font-medium text-[#FFFFFFE6] text-xs/4">Grid item</div>
+      </div>
+      <Row>
+        <Field
+          icon={<ColumnsIcon />}
+          value={label(info.colStart, info.colEnd)}
+          onCommit={(v) => app.updateSpan('wrap:experience', cardId, { col: parseSpan(v, info, 'col') })}
+          title="Column area — a number sets the span"
+        />
+        <Field
+          icon={<ColumnsIcon rotate={90} />}
+          value={label(info.rowStart, info.rowEnd)}
+          onCommit={(v) => app.updateSpan('wrap:experience', cardId, { row: parseSpan(v, info, 'row') })}
+          title="Row area — a number sets the span"
+        />
+        <div className="shrink-0 size-6 -m-1" />
+      </Row>
+    </div>
   )
 }
 
@@ -532,6 +585,11 @@ export default function Panel() {
   const entry = activeId ? app.entryOf(activeId) : null
   const showLayoutSection = !!entry
 
+  /* single selected card that lives inside the grid container */
+  const wrapEntry = app.entryOf('wrap:experience')
+  const isGridItem =
+    activeId?.startsWith('exp-') && wrapEntry?.layout !== 'none' && wrapEntry?.members?.includes(activeId)
+
   return (
     <div className="flex flex-col w-70.25 shrink-0 bg-[#2A2A2A] border-l border-[#373737] h-full overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#444_transparent] pb-10 text-xs/4">
       <PanelTop />
@@ -545,6 +603,8 @@ export default function Panel() {
           />
 
           {!showLayoutSection && <AddLayoutButtons />}
+
+          {isGridItem && <GridItemSection cardId={activeId} />}
 
           {showLayoutSection && entry.layout === 'grid' && <GridSection id={activeId} />}
           {showLayoutSection && entry.layout === 'flex' && <FlexSection id={activeId} />}

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useApp, layoutStyle, CARD_IDS } from '../store.jsx'
 
 export const ZOOM = 0.59
@@ -7,6 +7,9 @@ const BLUE = '#4B84F7'
 const BLUE_DASH = '#6FA3F8'
 const PINK = 'rgba(236, 90, 143, 0.28)'
 const PINK_SOLID = '#E64980'
+const SPAN_TINT = 'rgba(75, 132, 247, 0.10)'
+
+const WRAP_ID = 'wrap:experience'
 
 /* ---------------- MyTraj design pieces ---------------- */
 
@@ -33,6 +36,17 @@ function Card({ index, inGrid }) {
   const id = `exp-${index}`
   const c = EXPERIENCE[index]
   const ownStyle = layoutStyle(app.entryOf(id)) // cards are flex boxes by default
+
+  /* grid-item span (phase 2): how many tracks this card covers */
+  let spanStyle
+  if (inGrid) {
+    const wrap = app.entryOf(WRAP_ID)
+    const span = wrap?.spans?.[id] ?? { col: 1, row: 1 }
+    const col = Math.min(span.col, wrap.grid.cols.length)
+    const row = wrap.grid.rowMode === 'fixed' ? Math.min(span.row, wrap.grid.rows.length) : span.row
+    spanStyle = { gridColumn: `span ${col}`, gridRow: `span ${row}` }
+  }
+
   return (
     <div
       data-node={id}
@@ -40,7 +54,7 @@ function Card({ index, inGrid }) {
         e.stopPropagation()
         app.selectCard(id, e.shiftKey)
       }}
-      style={ownStyle ?? undefined}
+      style={{ ...ownStyle, ...spanStyle }}
       className={`${inGrid ? 'w-auto' : 'w-[140px]'} min-h-[97px] rounded-[10px] border bg-white relative cursor-default ${
         c.checked ? 'border-[#8A3FFC]' : 'border-[#E5E6ED]'
       }`}
@@ -57,7 +71,7 @@ function Card({ index, inGrid }) {
 /* the row of cards; Add grid wraps only the selected cards in a new container */
 function ExperienceRow({ onGapMove, onGapLeave }) {
   const app = useApp()
-  const wrap = app.entryOf('wrap:experience')
+  const wrap = app.entryOf(WRAP_ID)
   const hasWrap = wrap && wrap.layout !== 'none' && wrap.members?.length
   const members = hasWrap ? wrap.members : []
 
@@ -70,10 +84,10 @@ function ExperienceRow({ onGapMove, onGapLeave }) {
         children.push(
           <div
             key="wrap"
-            data-node="wrap:experience"
+            data-node={WRAP_ID}
             onClick={(e) => {
               e.stopPropagation()
-              app.selectNode('wrap:experience')
+              app.selectNode(WRAP_ID)
             }}
             onPointerMove={onGapMove}
             onPointerLeave={onGapLeave}
@@ -111,7 +125,63 @@ function MyTrajArtboard({ onGapMove, onGapLeave }) {
   )
 }
 
-/* ---------------- selection helpers ---------------- */
+/* ---------------- geometry ---------------- */
+
+/* resolved track geometry of the wrapper, in artboard px relative to the
+   wrapper's border box. Auto rows fall back to clustering the children. */
+function trackGeometry(wrapEl, entry) {
+  const wRect = wrapEl.getBoundingClientRect()
+  const cs = getComputedStyle(wrapEl)
+  const padL = parseFloat(cs.paddingLeft) || 0
+  const padT = parseFloat(cs.paddingTop) || 0
+  const colGap = parseFloat(cs.columnGap) || 0
+  const rowGap = parseFloat(cs.rowGap) || 0
+
+  const fromTemplate = (tpl, start) => {
+    const sizes = tpl.split(' ').map(parseFloat)
+    if (!sizes.length || !sizes.every((n) => Number.isFinite(n))) return null
+    const gap = start === padL ? colGap : rowGap
+    const out = []
+    let pos = start
+    for (const size of sizes) {
+      out.push({ start: pos, size })
+      pos += size + gap
+    }
+    return out
+  }
+
+  const fromChildren = (axis) => {
+    const kids = [...wrapEl.querySelectorAll(':scope > [data-node]')].map((k) => k.getBoundingClientRect())
+    if (!kids.length) return []
+    const startKey = axis === 'col' ? 'left' : 'top'
+    const endKey = axis === 'col' ? 'right' : 'bottom'
+    const origin = axis === 'col' ? wRect.left : wRect.top
+    const starts = [...new Set(kids.map((r) => Math.round(r[startKey])))].sort((a, b) => a - b)
+    return starts.map((s) => {
+      const cluster = kids.filter((r) => Math.round(r[startKey]) === s)
+      const end = Math.max(...cluster.map((r) => r[endKey]))
+      return { start: (s - origin) / ZOOM, size: (end - s) / ZOOM }
+    })
+  }
+
+  const cols = fromTemplate(cs.gridTemplateColumns, padL) ?? fromChildren('col')
+  const rows = fromTemplate(cs.gridTemplateRows, padT) ?? fromChildren('row')
+  return { wRect, cols, rows, colGap, rowGap, w: wRect.width / ZOOM, h: wRect.height / ZOOM }
+}
+
+/* which track a coordinate falls in (gap midpoints split ownership) */
+function trackIndexAt(tracks, gap, pos) {
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i]
+    if (pos <= t.start + t.size + gap / 2) return i
+  }
+  return tracks.length - 1
+}
+
+/* the tracks a rect covers: [startIndex, endIndex] */
+function trackRange(tracks, gap, start, end) {
+  return [trackIndexAt(tracks, gap, start + 2), trackIndexAt(tracks, gap, end - 2)]
+}
 
 const fmt = (n) => {
   if (Math.abs(n - Math.round(n)) < 0.05) return String(Math.round(n)) // snap zoom-rounding noise
@@ -124,7 +194,7 @@ function pillText(app, box) {
   if (sel.length === 1) {
     const id = sel[0]
     if (id.startsWith('wrap:') || id.startsWith('group:')) return `Fill ${fmt(box.w)} × Fit ${fmt(box.h)}`
-    const wrap = app.entryOf('wrap:experience')
+    const wrap = app.entryOf(WRAP_ID)
     if (wrap && wrap.layout !== 'none' && wrap.members?.includes(id)) return `Fill ${fmt(box.w)} × Fill ${fmt(box.h)}`
   }
   return `${fmt(box.w)} × ${fmt(box.h)}`
@@ -135,9 +205,9 @@ function parentIdOf(app) {
   const sel = app.selection
   if (!sel.length) return null
   if (sel[0].startsWith('wrap:') || sel[0].startsWith('group:')) return 'frame:content'
-  const wrap = app.entryOf('wrap:experience')
+  const wrap = app.entryOf(WRAP_ID)
   const allInWrap = wrap && wrap.layout !== 'none' && sel.every((s) => wrap.members?.includes(s))
-  return allInWrap ? 'wrap:experience' : 'group:experience'
+  return allInWrap ? WRAP_ID : 'group:experience'
 }
 
 /* ---------------- Canvas shell ---------------- */
@@ -146,18 +216,28 @@ export default function Canvas() {
   const app = useApp()
   const artboardRef = useRef(null)
   const [marks, setMarks] = useState(null) // {box, nodes:[], parent}
-  const [gap, setGap] = useState(null) // {bands:[{x,y,w,h,axis}], badge:{x,y,value}}
+  const [gap, setGap] = useState(null) // {bands:[], badge:{x,y,value}}
+  const [drag, setDrag] = useState(null) // {cardId, edge, axis, anchor}
+  const dragJustEnded = useRef(false)
 
-  /* measure selection + parent in artboard coordinates */
+  const wrap = app.entryOf(WRAP_ID)
+  const singleCardId =
+    app.selection.length === 1 && app.selection[0].startsWith('exp-') ? app.selection[0] : null
+  const gridItemId = singleCardId && wrap?.layout !== 'none' && wrap?.members?.includes(singleCardId) ? singleCardId : null
+
+  const wrapEl = () => artboardRef.current?.querySelector(`[data-node="${WRAP_ID}"]`)
+
+  /* measure selection + parent in artboard coordinates; publish for the panel */
   useLayoutEffect(() => {
     const artEl = artboardRef.current
-    const publish = (box) => {
+    const publish = (box, gridItem) => {
       window.__selBox = box
+      window.__gridItem = gridItem ?? null
       window.dispatchEvent(new Event('selbox'))
     }
     if (!artEl || app.selection.length === 0) {
       setMarks(null)
-      publish(null)
+      publish(null, null)
       return
     }
     const artRect = artEl.getBoundingClientRect()
@@ -175,7 +255,7 @@ export default function Canvas() {
     }
     if (!nodes.length) {
       setMarks(null)
-      publish(null)
+      publish(null, null)
       return
     }
     const box = {
@@ -189,109 +269,68 @@ export default function Canvas() {
     const pEl = pid && artEl.querySelector(`[data-node="${pid}"]`)
     const parent = pEl ? toArt(pEl.getBoundingClientRect()) : null
 
-    setMarks({ box, nodes, parent })
-    publish(box)
-  }, [app.selection, app.layouts])
+    /* grid-item info (1-based track range) for the panel */
+    let gridItem = null
+    if (gridItemId) {
+      const wEl = wrapEl()
+      const cEl = artEl.querySelector(`[data-node="${gridItemId}"]`)
+      if (wEl && cEl) {
+        const geo = trackGeometry(wEl, wrap)
+        const cRect = cEl.getBoundingClientRect()
+        const relX = (cRect.left - geo.wRect.left) / ZOOM
+        const relR = (cRect.right - geo.wRect.left) / ZOOM
+        const relY = (cRect.top - geo.wRect.top) / ZOOM
+        const relB = (cRect.bottom - geo.wRect.top) / ZOOM
+        const [c0, c1] = trackRange(geo.cols, geo.colGap, relX, relR)
+        const [r0, r1] = trackRange(geo.rows, geo.rowGap, relY, relB)
+        gridItem = { colStart: c0 + 1, colEnd: c1 + 1, rowStart: r0 + 1, rowEnd: r1 + 1 }
+      }
+    }
 
-  /* gap hover on the wrapper (only while it is selected) */
+    setMarks({ box, nodes, parent })
+    publish(box, gridItem)
+  }, [app.selection, app.layouts]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---------------- gap hover (wrapper selected) ---------------- */
+
   const handleGapMove = (e) => {
-    if (!app.selection.includes('wrap:experience')) {
+    if (!app.selection.includes(WRAP_ID) || drag) {
       if (gap) setGap(null)
       return
     }
-    const wrapEl = e.currentTarget
+    const wEl = e.currentTarget
     const artEl = artboardRef.current
-    const entry = app.entryOf('wrap:experience')
-    if (!wrapEl || !artEl || !entry) return
+    const entry = app.entryOf(WRAP_ID)
+    if (!wEl || !artEl || !entry) return
 
     const artRect = artEl.getBoundingClientRect()
-    const wRect = wrapEl.getBoundingClientRect()
-    const ox = (wRect.left - artRect.left) / ZOOM
-    const oy = (wRect.top - artRect.top) / ZOOM
-    const innerW = wRect.width / ZOOM
-    const innerH = wRect.height / ZOOM
-    const cx = (e.clientX - wRect.left) / ZOOM
-    const cy = (e.clientY - wRect.top) / ZOOM
+    const geo = trackGeometry(wEl, entry)
+    const ox = (geo.wRect.left - artRect.left) / ZOOM
+    const oy = (geo.wRect.top - artRect.top) / ZOOM
+    const cx = (e.clientX - geo.wRect.left) / ZOOM
+    const cy = (e.clientY - geo.wRect.top) / ZOOM
 
-    const cs = getComputedStyle(wrapEl)
-    const padL = parseFloat(cs.paddingLeft) || 0
-    const padT = parseFloat(cs.paddingTop) || 0
     const bands = []
-
-    if (entry.layout === 'grid') {
-      const colGap = parseFloat(cs.columnGap) || 0
-      const rowGap = parseFloat(cs.rowGap) || 0
-
-      /* explicit axes resolve to px lists; Auto axes compute to "none" —
-         then derive the gap positions from the children's edges instead */
-      const kidRects = [...wrapEl.querySelectorAll(':scope > [data-node]')].map((k) => k.getBoundingClientRect())
-      const edgesFromKids = (startKey, endKey) => {
-        const eps = 1
-        const starts = [...new Set(kidRects.map((r) => Math.round(r[startKey])))].sort((a, b) => a - b)
-        return starts.slice(1).map((s) => {
-          const prevEnd = Math.max(
-            ...kidRects.filter((r) => r[endKey] <= s + eps).map((r) => r[endKey]),
-          )
-          return (prevEnd - wRect[startKey === 'left' ? 'left' : 'top']) / ZOOM
-        })
+    if (geo.colGap > 0)
+      for (let i = 0; i < geo.cols.length - 1; i++) {
+        const t = geo.cols[i]
+        bands.push({ axis: 'col', x: ox + t.start + t.size, y: oy, w: geo.colGap, h: geo.h, value: entry.grid.colGap })
+      }
+    if (geo.rowGap > 0)
+      for (let i = 0; i < geo.rows.length - 1; i++) {
+        const t = geo.rows[i]
+        bands.push({ axis: 'row', x: ox, y: oy + t.start + t.size, w: geo.w, h: geo.rowGap, value: entry.grid.rowGap })
       }
 
-      const cols = cs.gridTemplateColumns.split(' ').map(parseFloat)
-      if (colGap > 0) {
-        if (cols.every((n) => Number.isFinite(n))) {
-          let x = padL
-          for (let i = 0; i < cols.length - 1; i++) {
-            x += cols[i]
-            bands.push({ axis: 'col', x: ox + x, y: oy, w: colGap, h: innerH, value: entry.grid.colGap })
-            x += colGap
-          }
-        } else {
-          for (const gx of edgesFromKids('left', 'right'))
-            bands.push({ axis: 'col', x: ox + gx, y: oy, w: colGap, h: innerH, value: entry.grid.colGap })
-        }
-      }
-      const rows = cs.gridTemplateRows.split(' ').map(parseFloat)
-      if (rowGap > 0) {
-        if (rows.every((n) => Number.isFinite(n))) {
-          let y = padT
-          for (let i = 0; i < rows.length - 1; i++) {
-            y += rows[i]
-            bands.push({ axis: 'row', x: ox, y: oy + y, w: innerW, h: rowGap, value: entry.grid.rowGap })
-            y += rowGap
-          }
-        } else {
-          for (const gy of edgesFromKids('top', 'bottom'))
-            bands.push({ axis: 'row', x: ox, y: oy + gy, w: innerW, h: rowGap, value: entry.grid.rowGap })
-        }
-      }
-    } else {
-      // flex wrapper: bands between consecutive children
-      const kids = [...wrapEl.querySelectorAll(':scope > [data-node]')].map((k) => k.getBoundingClientRect())
-      for (let i = 0; i < kids.length - 1; i++) {
-        const a = kids[i]
-        const b = kids[i + 1]
-        const gw = (b.left - a.right) / ZOOM
-        if (gw > 0)
-          bands.push({
-            axis: 'col',
-            x: ox + (a.right - wRect.left) / ZOOM,
-            y: oy,
-            w: gw,
-            h: innerH,
-            value: entry.flex.gap,
-          })
-      }
-    }
-
-    const hit = bands.find(
-      (b) => cx + ox >= b.x && cx + ox <= b.x + b.w && cy + oy >= b.y && cy + oy <= b.y + b.h,
-    )
+    const px = ox + cx
+    const py = oy + cy
+    const hit = bands.find((b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h)
     if (hit) {
       setGap({
         bands,
         badge: {
-          x: hit.axis === 'col' ? hit.x + hit.w / 2 : ox + cx,
-          y: hit.axis === 'col' ? oy + cy : hit.y + hit.h / 2,
+          x: hit.axis === 'col' ? hit.x + hit.w / 2 : px,
+          y: hit.axis === 'col' ? py : hit.y + hit.h / 2,
           value: hit.value,
         },
       })
@@ -300,11 +339,115 @@ export default function Canvas() {
     }
   }
 
+  /* ---------------- edge-drag span resize (phase 2) ---------------- */
+
+  const startSpanDrag = (edge) => (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const artEl = artboardRef.current
+    const wEl = wrapEl()
+    const cEl = artEl?.querySelector(`[data-node="${gridItemId}"]`)
+    if (!artEl || !wEl || !cEl) return
+
+    const geo = trackGeometry(wEl, wrap)
+    const cRect = cEl.getBoundingClientRect()
+    const axis = edge === 'left' || edge === 'right' ? 'col' : 'row'
+    const tracks = axis === 'col' ? geo.cols : geo.rows
+    const tGap = axis === 'col' ? geo.colGap : geo.rowGap
+    const origin = axis === 'col' ? geo.wRect.left : geo.wRect.top
+    const startPos = ((axis === 'col' ? cRect.left : cRect.top) - origin) / ZOOM
+    const endPos = ((axis === 'col' ? cRect.right : cRect.bottom) - origin) / ZOOM
+    const [s, en] = trackRange(tracks, tGap, startPos, endPos)
+
+    // the edge being dragged is free; the opposite edge's track is the anchor
+    const anchor = edge === 'right' || edge === 'bottom' ? s : en
+    setDrag({ cardId: gridItemId, edge, axis, anchor })
+  }
+
+  useEffect(() => {
+    if (!drag) return
+    const artEl = artboardRef.current
+
+    const onMove = (e) => {
+      const wEl = wrapEl()
+      if (!wEl || !artEl) return
+      const geo = trackGeometry(wEl, wrap)
+      const tracks = drag.axis === 'col' ? geo.cols : geo.rows
+      const tGap = drag.axis === 'col' ? geo.colGap : geo.rowGap
+      const origin = drag.axis === 'col' ? geo.wRect.left : geo.wRect.top
+      const pos = ((drag.axis === 'col' ? e.clientX : e.clientY) - origin) / ZOOM
+      const hovered = trackIndexAt(tracks, tGap, Math.max(0, Math.min(pos, tracks.at(-1).start + tracks.at(-1).size)))
+
+      const span =
+        drag.edge === 'right' || drag.edge === 'bottom'
+          ? hovered - drag.anchor + 1
+          : drag.anchor - hovered + 1
+      app.updateSpan(WRAP_ID, drag.cardId, { [drag.axis]: Math.max(1, span) })
+    }
+
+    const onUp = () => {
+      setDrag(null)
+      dragJustEnded.current = true
+      requestAnimationFrame(() => (dragJustEnded.current = false))
+    }
+
+    document.body.style.cursor = drag.axis === 'col' ? 'col-resize' : 'row-resize'
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      document.body.style.cursor = ''
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [drag]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* track guides + projected span while dragging */
+  let guides = null
+  if (drag && artboardRef.current) {
+    const wEl = wrapEl()
+    const artEl = artboardRef.current
+    if (wEl) {
+      const geo = trackGeometry(wEl, wrap)
+      const artRect = artEl.getBoundingClientRect()
+      const ox = (geo.wRect.left - artRect.left) / ZOOM
+      const oy = (geo.wRect.top - artRect.top) / ZOOM
+      const cEl = artEl.querySelector(`[data-node="${drag.cardId}"]`)
+      let span = null
+      if (cEl) {
+        const cRect = cEl.getBoundingClientRect()
+        span = {
+          x: (cRect.left - artRect.left) / ZOOM,
+          y: (cRect.top - artRect.top) / ZOOM,
+          w: cRect.width / ZOOM,
+          h: cRect.height / ZOOM,
+        }
+      }
+      guides = { ox, oy, geo, span }
+    }
+  }
+
   const clearGap = () => setGap(null)
   const pill = marks ? pillText(app, marks.box) : null
 
+  /* edge handle geometry (screen px) for the selected grid item */
+  const handleSpecs =
+    gridItemId && marks && marks.nodes.length === 1
+      ? [
+          { edge: 'left', x: marks.box.x, y: marks.box.y + marks.box.h / 2, cursor: 'col-resize', vert: true },
+          { edge: 'right', x: marks.box.x + marks.box.w, y: marks.box.y + marks.box.h / 2, cursor: 'col-resize', vert: true },
+          { edge: 'top', x: marks.box.x + marks.box.w / 2, y: marks.box.y, cursor: 'row-resize', vert: false },
+          { edge: 'bottom', x: marks.box.x + marks.box.w / 2, y: marks.box.y + marks.box.h, cursor: 'row-resize', vert: false },
+        ]
+      : null
+
   return (
-    <div className="relative flex-1 min-w-0 bg-[#1E1E1E] overflow-hidden" onClick={() => app.clearSelection()}>
+    <div
+      className="relative flex-1 min-w-0 bg-[#1E1E1E] overflow-hidden"
+      onClick={() => {
+        if (dragJustEnded.current) return
+        app.clearSelection()
+      }}
+    >
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
         {/* artboard title (screen-space) */}
         <div className="text-[11px] font-sans text-[#9B9B9B] mb-1.5">Onboarding · Filled state</div>
@@ -319,7 +462,7 @@ export default function Canvas() {
             <MyTrajArtboard onGapMove={handleGapMove} onGapLeave={clearGap} />
           </div>
 
-          {/* screen-space selection overlay: crisp 1px lines and handles at any zoom */}
+          {/* screen-space selection overlay */}
           {marks && (
             <div className="absolute inset-0 pointer-events-none">
               {/* gap highlights */}
@@ -328,18 +471,54 @@ export default function Canvas() {
                   <div
                     key={i}
                     className="absolute"
-                    style={{
-                      left: b.x * ZOOM,
-                      top: b.y * ZOOM,
-                      width: b.w * ZOOM,
-                      height: b.h * ZOOM,
-                      background: PINK,
-                    }}
+                    style={{ left: b.x * ZOOM, top: b.y * ZOOM, width: b.w * ZOOM, height: b.h * ZOOM, background: PINK }}
                   />
                 ))}
 
+              {/* span-drag guides: dashed track lines + projected area */}
+              {guides && (
+                <>
+                  {guides.span && (
+                    <div
+                      className="absolute"
+                      style={{
+                        left: guides.span.x * ZOOM,
+                        top: guides.span.y * ZOOM,
+                        width: guides.span.w * ZOOM,
+                        height: guides.span.h * ZOOM,
+                        background: SPAN_TINT,
+                      }}
+                    />
+                  )}
+                  {guides.geo.cols.slice(1).map((t, i) => (
+                    <div
+                      key={`c${i}`}
+                      className="absolute"
+                      style={{
+                        left: (guides.ox + t.start - guides.geo.colGap / 2) * ZOOM,
+                        top: guides.oy * ZOOM,
+                        height: guides.geo.h * ZOOM,
+                        borderLeft: `1px dashed ${BLUE_DASH}`,
+                      }}
+                    />
+                  ))}
+                  {guides.geo.rows.slice(1).map((t, i) => (
+                    <div
+                      key={`r${i}`}
+                      className="absolute"
+                      style={{
+                        top: (guides.oy + t.start - guides.geo.rowGap / 2) * ZOOM,
+                        left: guides.ox * ZOOM,
+                        width: guides.geo.w * ZOOM,
+                        borderTop: `1px dashed ${BLUE_DASH}`,
+                      }}
+                    />
+                  ))}
+                </>
+              )}
+
               {/* dashed parent frame */}
-              {marks.parent && (
+              {marks.parent && !drag && (
                 <div
                   className="absolute"
                   style={{
@@ -385,11 +564,7 @@ export default function Canvas() {
                   { left: -4, bottom: -4 },
                   { right: -4, bottom: -4 },
                 ].map((posn, i) => (
-                  <div
-                    key={i}
-                    className="absolute size-2 bg-white"
-                    style={{ ...posn, border: `1.5px solid ${BLUE}` }}
-                  />
+                  <div key={i} className="absolute size-2 bg-white" style={{ ...posn, border: `1.5px solid ${BLUE}` }} />
                 ))}
 
                 {/* size pill */}
@@ -408,6 +583,34 @@ export default function Canvas() {
                   {pill}
                 </div>
               </div>
+
+              {/* edge handles: drag to change how many tracks the item spans */}
+              {handleSpecs &&
+                handleSpecs.map((h) => (
+                  <div
+                    key={h.edge}
+                    onPointerDown={startSpanDrag(h.edge)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute flex items-center justify-center"
+                    style={{
+                      left: h.x * ZOOM - 8,
+                      top: h.y * ZOOM - 8,
+                      width: 16,
+                      height: 16,
+                      pointerEvents: 'auto',
+                      cursor: h.cursor,
+                    }}
+                  >
+                    <div
+                      className="bg-white rounded-full"
+                      style={{
+                        width: h.vert ? 5 : 14,
+                        height: h.vert ? 14 : 5,
+                        border: `1.5px solid ${BLUE}`,
+                      }}
+                    />
+                  </div>
+                ))}
 
               {/* gap badge */}
               {gap && (

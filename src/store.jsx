@@ -114,7 +114,12 @@ export function AppProvider({ children }) {
         const members = CARD_IDS.filter((id) => cards.includes(id))
         setLayouts((prev) => ({
           ...prev,
-          'wrap:experience': { ...makeEntry(3, 2), layout: kind, members },
+          'wrap:experience': {
+            ...makeEntry(3, 2),
+            layout: kind,
+            members,
+            spans: Object.fromEntries(members.map((mid) => [mid, { col: 1, row: 1 }])),
+          },
         }))
         setSelection(['wrap:experience'])
       },
@@ -142,6 +147,22 @@ export function AppProvider({ children }) {
           const tracks = grid[key].slice(0, n)
           while (tracks.length < n) tracks.push(makeTrack())
           return { ...prev, [id]: { ...prev[id], grid: { ...grid, [key]: tracks } } }
+        })
+      },
+
+      /* how many columns/rows a grid item spans (edge-drag or panel edit) */
+      updateSpan(wrapId, cardId, patch) {
+        setLayouts((prev) => {
+          const entry = prev[wrapId]
+          if (!entry) return prev
+          const grid = entry.grid
+          const cur = entry.spans?.[cardId] ?? { col: 1, row: 1 }
+          const next = { ...cur, ...patch }
+          next.col = Math.max(1, Math.min(grid.cols.length, Math.round(next.col) || 1))
+          const rowMax = grid.rowMode === 'fixed' ? grid.rows.length : 8
+          next.row = Math.max(1, Math.min(rowMax, Math.round(next.row) || 1))
+          if (next.col === cur.col && next.row === cur.row) return prev
+          return { ...prev, [wrapId]: { ...entry, spans: { ...(entry.spans ?? {}), [cardId]: next } } }
         })
       },
 
