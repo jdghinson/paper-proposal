@@ -468,7 +468,6 @@ export default function Canvas() {
           <div
             style={{ zoom: ZOOM }}
             ref={artboardRef}
-            onClick={(e) => e.stopPropagation()}
             className="shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_18px_60px_rgba(0,0,0,0.45)]"
           >
             <MyTrajArtboard onGapMove={handleGapMove} onGapLeave={clearGap} />
