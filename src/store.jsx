@@ -299,6 +299,9 @@ export function AppProvider({ children }) {
               gridDims(entry),
             )
             if (!rect) return prev // pinned rect is no longer legal under this grid
+            const curRect = rectOf(entry, cardId)
+            if (curRect && rect.col === curRect.col && rect.row === curRect.row && rect.colSpan === curRect.colSpan && rect.rowSpan === curRect.rowSpan)
+              return prev
             const pinnedEntry = {
               ...entry,
               places: { ...entry.places, [cardId]: { col: rect.col, row: rect.row } },

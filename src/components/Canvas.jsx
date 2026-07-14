@@ -620,7 +620,7 @@ export default function Canvas() {
           h: cRect.height / ZOOM,
         }
       }
-      guides = { ox, oy, geo, span, invalid: Boolean(move && !move.ok) }
+      guides = { ox, oy, geo, span, invalid: Boolean(move && move.target && !move.ok) }
     }
   }
 
