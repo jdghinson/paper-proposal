@@ -347,9 +347,14 @@ export const ArtboardLayerIcon = () => (
 )
 
 // Generic frame layer icon
+// Frame (no layout) — filled rect with corner brackets
 export const FrameLayerIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" style={{ flexShrink: 0 }}>
-    <path d="M5.5 2V14M10.5 2V14M2 5.5H14M2 10.5H14" stroke={W(0.9)} fill="none" />
+    <rect x="2" y="3" width="12" height="10" fill={W(0.09)} />
+    <path transform="translate(-1 0)" d="M4 9L4 12H7V13H4H3V12V9H4Z" fill={W(0.9)} />
+    <path transform="translate(-1 0)" d="M7 3H4H3V4V7H4L4 4H7V3Z" fill={W(0.9)} />
+    <path transform="translate(1 0)" d="M9 3H12H13V4V7H12V4H9V3Z" fill={W(0.9)} />
+    <path transform="translate(1 0)" d="M12 9V12H9V13H12H13V12V9H12Z" fill={W(0.9)} />
   </svg>
 )
 
