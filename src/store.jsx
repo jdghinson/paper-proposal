@@ -59,6 +59,11 @@ export function AppProvider({ children }) {
   const [overlay, setOverlay] = useState(null) // 'gridSettings' | null
   const [menu, setMenu] = useState(null) // {kind:'position'|'track', ...}
 
+  if (import.meta.env.DEV) {
+    window.__layouts = layouts // debug aid
+    window.__selection = selection
+  }
+
   const api = useMemo(() => {
     const entryOf = (id) => layouts[id] ?? null
 

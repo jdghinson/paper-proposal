@@ -178,6 +178,19 @@ function trackIndexAt(tracks, gap, pos) {
   return tracks.length - 1
 }
 
+/* progressive snapping: a track joins the span once the pointer
+   crosses its midpoint (Figma-style), not merely its edge */
+function lastMidpointBefore(tracks, pos) {
+  let e = -1
+  for (let i = 0; i < tracks.length; i++) if (pos > tracks[i].start + tracks[i].size / 2) e = i
+  return e
+}
+function firstMidpointAfter(tracks, pos) {
+  let s = tracks.length
+  for (let i = tracks.length - 1; i >= 0; i--) if (pos < tracks[i].start + tracks[i].size / 2) s = i
+  return s
+}
+
 /* the tracks a rect covers: [startIndex, endIndex] */
 function trackRange(tracks, gap, start, end) {
   return [trackIndexAt(tracks, gap, start + 2), trackIndexAt(tracks, gap, end - 2)]
@@ -218,6 +231,7 @@ export default function Canvas() {
   const [marks, setMarks] = useState(null) // {box, nodes:[], parent}
   const [gap, setGap] = useState(null) // {bands:[], badge:{x,y,value}}
   const [drag, setDrag] = useState(null) // {cardId, edge, axis, anchor}
+  const [dragPos, setDragPos] = useState(null) // pointer in artboard coords, for the ghost edge
   const dragJustEnded = useRef(false)
 
   const wrap = app.entryOf(WRAP_ID)
@@ -371,22 +385,25 @@ export default function Canvas() {
     const onMove = (e) => {
       const wEl = wrapEl()
       if (!wEl || !artEl) return
+      const artRect = artEl.getBoundingClientRect()
+      setDragPos({ x: (e.clientX - artRect.left) / ZOOM, y: (e.clientY - artRect.top) / ZOOM })
+
       const geo = trackGeometry(wEl, wrap)
       const tracks = drag.axis === 'col' ? geo.cols : geo.rows
-      const tGap = drag.axis === 'col' ? geo.colGap : geo.rowGap
       const origin = drag.axis === 'col' ? geo.wRect.left : geo.wRect.top
       const pos = ((drag.axis === 'col' ? e.clientX : e.clientY) - origin) / ZOOM
-      const hovered = trackIndexAt(tracks, tGap, Math.max(0, Math.min(pos, tracks.at(-1).start + tracks.at(-1).size)))
 
+      /* the ghost follows the pointer; the card snaps once a track's midpoint is crossed */
       const span =
         drag.edge === 'right' || drag.edge === 'bottom'
-          ? hovered - drag.anchor + 1
-          : drag.anchor - hovered + 1
+          ? Math.max(drag.anchor, lastMidpointBefore(tracks, pos)) - drag.anchor + 1
+          : drag.anchor - Math.min(drag.anchor, firstMidpointAfter(tracks, pos)) + 1
       app.updateSpan(WRAP_ID, drag.cardId, { [drag.axis]: Math.max(1, span) })
     }
 
     const onUp = () => {
       setDrag(null)
+      setDragPos(null)
       dragJustEnded.current = true
       requestAnimationFrame(() => (dragJustEnded.current = false))
     }
@@ -413,6 +430,7 @@ export default function Canvas() {
       const oy = (geo.wRect.top - artRect.top) / ZOOM
       const cEl = artEl.querySelector(`[data-node="${drag.cardId}"]`)
       let span = null
+      let ghost = null
       if (cEl) {
         const cRect = cEl.getBoundingClientRect()
         span = {
@@ -421,8 +439,28 @@ export default function Canvas() {
           w: cRect.width / ZOOM,
           h: cRect.height / ZOOM,
         }
+        /* ghost edge follows the pointer freely (clamped to the container);
+           the card underneath snaps to whole tracks — CSS grid placement
+           only exists on track lines */
+        if (dragPos) {
+          const clampX = (v) => Math.max(ox, Math.min(v, ox + geo.w))
+          const clampY = (v) => Math.max(oy, Math.min(v, oy + geo.h))
+          ghost = { ...span }
+          if (drag.edge === 'right') ghost.w = Math.max(24, clampX(dragPos.x) - span.x)
+          if (drag.edge === 'left') {
+            const x1 = span.x + span.w
+            ghost.x = Math.min(clampX(dragPos.x), x1 - 24)
+            ghost.w = x1 - ghost.x
+          }
+          if (drag.edge === 'bottom') ghost.h = Math.max(24, clampY(dragPos.y) - span.y)
+          if (drag.edge === 'top') {
+            const y1 = span.y + span.h
+            ghost.y = Math.min(clampY(dragPos.y), y1 - 24)
+            ghost.h = y1 - ghost.y
+          }
+        }
       }
-      guides = { ox, oy, geo, span }
+      guides = { ox, oy, geo, span, ghost }
     }
   }
 
@@ -486,6 +524,20 @@ export default function Canvas() {
                         top: guides.span.y * ZOOM,
                         width: guides.span.w * ZOOM,
                         height: guides.span.h * ZOOM,
+                        background: SPAN_TINT,
+                      }}
+                    />
+                  )}
+                  {/* ghost edge: follows the cursor; the card snaps to tracks below it */}
+                  {guides.ghost && (
+                    <div
+                      className="absolute rounded-[6px]"
+                      style={{
+                        left: guides.ghost.x * ZOOM,
+                        top: guides.ghost.y * ZOOM,
+                        width: guides.ghost.w * ZOOM,
+                        height: guides.ghost.h * ZOOM,
+                        border: `1.5px solid ${BLUE}`,
                         background: SPAN_TINT,
                       }}
                     />
