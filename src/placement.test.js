@@ -136,13 +136,12 @@ describe('clampRect', () => {
     expect(r.rowSpan).toBe(1)
   })
 
-  it('clamps an unpinned item into the grid when it has no current rect to fall back to', () => {
+  it('returns null for an unpinned item: there is no origin to retreat toward', () => {
     // 'x' is a member with no place, so rectOf returns null (current === null).
-    // The desired start cell (col 5) is off a 3-column grid; there is nothing
-    // to shrink (spans already 1x1), so the result must still be inside the grid.
+    // clampRect has no legal rect to fall back to in that case, so it refuses
+    // to guess and returns null instead of silently producing an illegal rect.
     const r = clampRect({ members: ['x'], spans: {}, places: {} }, 'x', { col: 5, row: 1, colSpan: 1, rowSpan: 1 }, dims)
-    expect(withinGrid(r, dims)).toBe(true)
-    expect(r).toEqual({ col: 3, row: 1, colSpan: 1, rowSpan: 1 })
+    expect(r).toBeNull()
   })
 
   it('falls back to the current rect when a pinned item cannot legally reach the desired cell', () => {
@@ -150,5 +149,18 @@ describe('clampRect', () => {
     // so there is no span left to shrink; the only safe answer is a's current rect.
     const r = clampRect(entry(), 'a', { col: 2, row: 1, colSpan: 1, rowSpan: 1 }, dims)
     expect(r).toEqual({ col: 1, row: 1, colSpan: 1, rowSpan: 1 })
+  })
+
+  it('clamps a pinned item onto a neighbor to a rect that stays in the grid and overlaps no one', () => {
+    // x at (1,1) and y at (2,1) are both pinned. Dragging x onto y's cell must
+    // clamp to something that neither leaves the grid nor overlaps y (or anyone).
+    const e = {
+      members: ['x', 'y'],
+      spans: { x: { col: 1, row: 1 }, y: { col: 1, row: 1 } },
+      places: { x: { col: 1, row: 1 }, y: { col: 2, row: 1 } },
+    }
+    const r = clampRect(e, 'x', { col: 2, row: 1, colSpan: 1, rowSpan: 1 }, dims)
+    expect(withinGrid(r, dims)).toBe(true)
+    expect(occupantsOf(e, r, 'x')).toEqual([])
   })
 })

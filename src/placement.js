@@ -86,14 +86,21 @@ export function resolveDrop(entry, id, target, dims) {
 /* A resize, shrunk until it is legal. The dragged edge gives way; the anchored
    edge (the far side of `desired`) is held. Growing right/down pulls colSpan or
    rowSpan back; growing left/up pushes col or row forward, keeping the far edge
-   where the user put it. */
+   where the user put it.
+
+   Requires a pinned item: `rectOf(entry, id)` must be non-null. There is no
+   origin to retreat toward and no legal rect to fall back to for an unpinned
+   item, so callers must pin the item's start cell before resizing it. If the
+   item isn't pinned, clampRect returns null rather than guess. */
 export function clampRect(entry, id, desired, dims) {
   const current = rectOf(entry, id)
+  if (!current) return null
+
   const legal = (rect) => withinGrid(rect, dims) && occupantsOf(entry, rect, id).length === 0
   if (legal(desired)) return desired
 
-  const growingLeft = current ? desired.col < current.col : false
-  const growingUp = current ? desired.row < current.row : false
+  const growingLeft = desired.col < current.col
+  const growingUp = desired.row < current.row
 
   const rect = { ...desired }
   /* give way one track at a time on each axis until nothing is in the way */
@@ -106,14 +113,8 @@ export function clampRect(entry, id, desired, dims) {
     }
   }
   if (legal(rect)) return rect
-  if (current) return current
 
-  /* no pinned rect to fall back to: clamp the start cell into the grid and
-     shrink to 1x1 — the minimal rect that is at least inside the grid */
-  return {
-    col: Math.min(Math.max(desired.col, 1), dims.cols),
-    row: Math.min(Math.max(desired.row, 1), dims.rows),
-    colSpan: 1,
-    rowSpan: 1,
-  }
+  /* the shrunk rect is still illegal (e.g. no span left to give): fall back
+     to the item's pinned current rect, which is legal by definition */
+  return current
 }
