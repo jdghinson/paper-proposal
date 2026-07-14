@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-schibsted: "Schibsted Grotesk", sans-serif;
+  --font-hanken: "Hanken Grotesk", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #2a2a2a;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+  user-select: none;
+}
+
+/* Paper-style number inputs: invisible chrome.
+   Layered so Tailwind utilities (e.g. text color) still win. */
+@layer base {
+  input {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    outline: none;
+    padding: 0;
+    min-width: 0;
+  }
+}
