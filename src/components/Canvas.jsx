@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useApp, layoutStyle, CARD_IDS, WRAP_ID, isPinned, gridDims } from '../store.jsx'
-import { resolveDrop } from '../placement.js'
+import { resolveDrop, rectOf } from '../placement.js'
 
 export const ZOOM = 0.59
 
@@ -545,11 +545,32 @@ export default function Canvas() {
       const pos = ((drag.axis === 'col' ? e.clientX : e.clientY) - origin) / ZOOM
 
       /* the card snaps once the pointer crosses a track's midpoint */
-      const span =
-        drag.edge === 'right' || drag.edge === 'bottom'
-          ? Math.max(drag.anchor, lastMidpointBefore(tracks, pos)) - drag.anchor + 1
-          : drag.anchor - Math.min(drag.anchor, firstMidpointAfter(tracks, pos)) + 1
-      app.updateSpan(WRAP_ID, drag.cardId, { [drag.axis]: Math.max(1, span) })
+      const entry = app.entryOf(WRAP_ID)
+      const growing = drag.edge === 'right' || drag.edge === 'bottom'
+      const edgeIdx = growing
+        ? Math.max(drag.anchor, lastMidpointBefore(tracks, pos))
+        : Math.min(drag.anchor, firstMidpointAfter(tracks, pos))
+      const start = Math.min(drag.anchor, edgeIdx)
+      const span = Math.abs(edgeIdx - drag.anchor) + 1
+
+      if (!entry?.places) {
+        app.updateSpan(WRAP_ID, drag.cardId, { [drag.axis]: Math.max(1, span) })
+        return
+      }
+
+      /* pinned: ask for the full rect, so a left/top drag moves the start cell;
+         resizeItem clamps at the first occupied cell */
+      const cur = rectOf(entry, drag.cardId)
+      if (!cur) return // pinned grid, but this card was never pinned
+      const desired = { ...cur }
+      if (drag.axis === 'col') {
+        desired.col = start + 1
+        desired.colSpan = Math.max(1, span)
+      } else {
+        desired.row = start + 1
+        desired.rowSpan = Math.max(1, span)
+      }
+      app.resizeItem(WRAP_ID, drag.cardId, desired)
     }
 
     const onUp = () => {
