@@ -47,9 +47,15 @@ const makeEntry = (cols = 3, rows = 2) => ({ layout: 'none', grid: makeGrid(cols
 
 export const CARD_IDS = ['exp-0', 'exp-1', 'exp-2', 'exp-3', 'exp-4']
 
+/* exp-0 starts as a plain frame (no layout) so selecting it alone demos the
+   single-element "Add flex" entry point; the rest are flex boxes. */
+const NO_LAYOUT_CARD = 'exp-0'
+
 const initialLayouts = () => ({
   'group:experience': makeEntry(3, 2),
-  ...Object.fromEntries(CARD_IDS.map((id) => [id, { ...makeEntry(), layout: 'flex', flex: cardFlex() }])),
+  ...Object.fromEntries(
+    CARD_IDS.map((id) => [id, { ...makeEntry(), layout: id === NO_LAYOUT_CARD ? 'none' : 'flex', flex: cardFlex() }]),
+  ),
 })
 
 const AppCtx = createContext(null)

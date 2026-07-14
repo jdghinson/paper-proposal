@@ -6,6 +6,7 @@ import {
   PageIcon,
   PlusIcon,
   ArtboardLayerIcon,
+  FrameLayerIcon,
   TextLayerIcon,
   GridLayerIcon,
   VStackLayerIcon,
@@ -14,9 +15,10 @@ import {
 
 const CARD_NAMES = ['Entry Level', 'Mid-Level', 'Senior', 'Lead / Principal', 'Executive']
 
-/* a frame's layer icon reflects its layout: grid, or a flex stack by direction */
-function layoutIcon(entry, fallback) {
-  if (!entry || entry.layout === 'none') return fallback
+/* a frame's layer icon reflects its layout: generic frame when it has none,
+   grid, or a flex stack by direction */
+function layoutIcon(entry) {
+  if (!entry || entry.layout === 'none') return 'frame'
   if (entry.layout === 'grid') return 'grid'
   return entry.flex.dir === 'row' ? 'hstack' : 'vstack'
 }
@@ -42,7 +44,7 @@ function buildTree(app) {
         wrapperInserted = true
         rows.push({
           d: 3,
-          icon: layoutIcon(wrap, 'vstack'),
+          icon: layoutIcon(wrap),
           name: wrap.layout === 'grid' ? 'Grid' : 'Frame',
           chevron: true,
           sel: 'wrap:experience',
@@ -50,7 +52,7 @@ function buildTree(app) {
         members.forEach((mid) => {
           rows.push({
             d: 4,
-            icon: layoutIcon(app.entryOf(mid), 'vstack'),
+            icon: layoutIcon(app.entryOf(mid)),
             name: CARD_NAMES[Number(mid.split('-')[1])],
             chevron: true,
             sel: mid,
@@ -58,7 +60,7 @@ function buildTree(app) {
         })
       }
     } else {
-      rows.push({ d: 3, icon: layoutIcon(app.entryOf(id), 'vstack'), name, chevron: true, sel: id })
+      rows.push({ d: 3, icon: layoutIcon(app.entryOf(id)), name, chevron: true, sel: id })
     }
   })
   return rows
@@ -74,6 +76,8 @@ const LayerIcon = ({ kind }) => {
       return <GridLayerIcon />
     case 'hstack':
       return <HStackLayerIcon />
+    case 'frame':
+      return <FrameLayerIcon />
     default:
       return <VStackLayerIcon />
   }

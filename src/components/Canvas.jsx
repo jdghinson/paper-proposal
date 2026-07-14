@@ -35,7 +35,7 @@ function Card({ index, inGrid }) {
   const app = useApp()
   const id = `exp-${index}`
   const c = EXPERIENCE[index]
-  const ownStyle = layoutStyle(app.entryOf(id)) // cards are flex boxes by default
+  const ownStyle = layoutStyle(app.entryOf(id)) // null until the card is given a layout
 
   /* grid-item span (phase 2): how many tracks this card covers */
   let spanStyle
@@ -55,12 +55,14 @@ function Card({ index, inGrid }) {
         app.selectCard(id, e.shiftKey)
       }}
       style={{ ...ownStyle, ...spanStyle }}
-      className={`${inGrid ? 'w-auto' : 'w-[140px]'} min-h-[97px] rounded-[10px] border bg-white relative cursor-default ${
+      className={`${inGrid ? 'w-auto' : 'w-[140px]'} min-h-[97px] rounded-[10px] border bg-white relative cursor-default p-3 ${
         c.checked ? 'border-[#8A3FFC]' : 'border-[#E5E6ED]'
       }`}
     >
+      {/* base padding/spacing via classes so a no-layout card looks identical
+          to a flex one; the flex entry (when present) drives it instead */}
       <RadioCircle checked={c.checked} />
-      <div>
+      <div className={ownStyle ? '' : 'mt-2'}>
         <div className="text-[14px] font-semibold leading-5">{c.title}</div>
         <div className="text-[12px] text-[#828498] mt-0.5">{c.sub}</div>
       </div>
